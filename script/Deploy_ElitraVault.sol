@@ -81,8 +81,5 @@ contract Deploy is BaseScript {
         console.log("Total Supply:", vault.totalSupply());
         console.log("Paused:", vault.paused());
         console.log("Authority:", address(vault.authority()));
-        console.log("Deposit Fee:", vault.feeOnDeposit());
-        console.log("Withdraw Fee:", vault.feeOnDeposit());
-        console.log("FeeRecipient:", vault.feeRecipient());
     }
 }

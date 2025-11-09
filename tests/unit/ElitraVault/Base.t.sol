@@ -32,12 +32,11 @@ abstract contract Base_Test is Test, Events, Utils, Constants {
     // ====================================== SET-UP FUNCTION ======================================
     function setUp() public virtual {
         vm.createSelectFork({
-            blockNumber: 24_500_000, // Jan-02-2025 03:42:27 AM +UTC
-            urlOrAlias: vm.envOr("BASE_RPC_URL", string("https://base.llamarpc.com"))
+            urlOrAlias: vm.envOr("SEI_RPC_URL", string("https://evm-rpc.sei-apis.com"))
         });
 
-        // USDC (https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913)
-        usdc = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
+        // USDC (https://seiscan.io/token/0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392)
+        usdc = IERC20(0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392);
 
         // Label the base test contracts.
         vm.label({ account: address(usdc), newLabel: "USDC" });

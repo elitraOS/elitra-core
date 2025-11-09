@@ -25,9 +25,6 @@ library Errors {
     /// @notice Thrown when the new max percentage is greater than the current max percentage.
     error InvalidMaxPercentage();
 
-    /// @notice Thrown when the new fee is greater than the max allowed fee.
-    error InvalidFee();
-
     /// @notice Thrown when the underlying balance has already been updated in the current block.
     error UpdateAlreadyCompletedInThisBlock();
 
@@ -66,4 +63,16 @@ library Errors {
 
     /// @notice Thrown when the assets out is less than the minimum assets out
     error Gateway__InsufficientAssetsOut(uint256 assetsOut, uint256 minAssetsOut);
+
+    /// @notice Thrown when caller is not the oracle adapter
+    error OnlyOracleAdapter();
+
+    /// @notice Thrown when attempting to set zero address for adapter
+    error ZeroAddress();
+
+    /// @notice Thrown when redemption strategy returns invalid mode
+    error InvalidRedemptionMode();
+
+    /// @notice Thrown when a user is not authorized to perform an operation
+    error Unauthorized();
 }

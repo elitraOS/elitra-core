@@ -8,14 +8,6 @@ import { Errors } from "./libraries/Errors.sol";
 import { IElitraRegistry } from "./interfaces/IElitraRegistry.sol";
 import { Authority, AuthUpgradeable } from "./base/AuthUpgradeable.sol";
 
-// __     __   _____            _     _
-// \ \   / /  |  __ \          (_)   | |
-//  \ \_/ /__ | |__) |___  __ _ _ ___| |_ _ __ _   _
-//   \   / _ \|  _  // _ \/ _` | / __| __| '__| | | |
-//    | | (_) | | \ \  __/ (_| | \__ \ |_| |  | |_| |
-//    |_|\___/|_|  \_\___|\__, |_|___/\__|_|   \__, |
-//                         __/ |                __/ |
-//                        |___/                |___/
 /// @title ElitraRegistry - A registry for Elitra vaults
 /// @dev This contract is used to register and unregister Elitra vaults
 contract ElitraRegistry is AuthUpgradeable, IElitraRegistry {

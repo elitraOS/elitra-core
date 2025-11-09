@@ -10,15 +10,10 @@ import { AuthUpgradeable, Authority } from "./base/AuthUpgradeable.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
-// __   __    ____            _                  _
-// \ \ / /__ |  _ \ _ __ ___ | |_ ___   ___ ___ | |
-//  \ V / _ \| |_) | '__/ _ \| __/ _ \ / __/ _ \| |
-//   | | (_) |  __/| | | (_) | || (_) | (_| (_) | |
-//   |_|\___/|_|   |_|  \___/ \__\___/ \___\___/|_|
+
 /// @title ElitraVault - A simple vault contract that allows for an operator to manage the vault.
 /// @dev This contract is based on the ERC4626 standard and uses the Auth contract for access control.
 /// It provides an asynchronous redeem mechanism that allows users to request a redeem and the operator to fulfill it.
@@ -30,15 +25,12 @@ import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/P
 contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgradeable, PausableUpgradeable {
     using Math for uint256;
     using Address for address;
-    using SafeERC20 for IERC20;
 
     /// @dev Assume requests are non-fungible and all have ID = 0, so we can differentiate between a request ID and the
     /// assets amount.
     uint256 internal constant REQUEST_ID = 0;
     /// @dev The denominator used for precision calculations.
     uint256 internal constant DENOMINATOR = 1e18;
-    /// @dev The maximum fee that can be set for the vault operations. 1e17 = 10%.
-    uint256 internal constant MAX_FEE = 1e17;
     /// @dev The maximum percentage that can be set as a threshold for the percentage change. 1e17 = 10%
     uint256 internal constant MAX_PERCENTAGE_THRESHOLD = 1e17;
 
@@ -53,12 +45,6 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     /// @dev the maximum percentage change allowed before the vault is paused. It can be updated by the owner.
     /// 1e18 = 100%. It's value depends on the frequency of the oracle updates.
     uint256 public maxPercentageChange;
-    /// @dev the fee charged for the withdraws, it's a percentage of the assets redeemed
-    uint256 public feeOnWithdraw;
-    /// @dev the fee charged for the deposits, it's a percentage of the assets deposited
-    uint256 public feeOnDeposit;
-    /// @dev the address that receives the fees for the vault operations, if it's zero, no fees are charged
-    address public feeRecipient;
 
     /// @dev used to store the amount of shares that are pending redemption, it must be fulfilled by the vault operator
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
@@ -152,23 +138,23 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         require(owner == msg.sender, Errors.NotSharesOwner());
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
 
-        uint256 assetsWithFee = super.previewRedeem(shares);
+        uint256 assets = super.previewRedeem(shares);
 
         // instant redeem if the vault has enough assets
-        if (_getAvailableBalance() >= assetsWithFee) {
-            _withdraw(owner, receiver, owner, assetsWithFee, shares);
-            emit RedeemRequest(receiver, owner, assetsWithFee, shares, true);
-            return assetsWithFee;
+        if (_getAvailableBalance() >= assets) {
+            _withdraw(owner, receiver, owner, assets, shares);
+            emit RedeemRequest(receiver, owner, assets, shares, true);
+            return assets;
         }
 
-        emit RedeemRequest(receiver, owner, assetsWithFee, shares, false);
+        emit RedeemRequest(receiver, owner, assets, shares, false);
         // transfer the shares to the vault and store the request
         _transfer(owner, address(this), shares);
 
-        totalPendingAssets += assetsWithFee;
+        totalPendingAssets += assets;
         PendingRedeem storage pending = _pendingRedeem[receiver];
         pending.shares += shares;
-        pending.assets += assetsWithFee;
+        pending.assets += assets;
 
         return REQUEST_ID;
     }
@@ -176,35 +162,35 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     /// @notice The operator can fulfill a redeem request. Requires authorization.
     /// @param receiver The address of the receiver of the assets.
     /// @param shares The amount of shares to fulfil.
-    /// @param assetsWithFee The amount of assets to fulfil including the fee.
-    function fulfillRedeem(address receiver, uint256 shares, uint256 assetsWithFee) external requiresAuth {
+    /// @param assets The amount of assets to fulfil.
+    function fulfillRedeem(address receiver, uint256 shares, uint256 assets) external requiresAuth {
         PendingRedeem storage pending = _pendingRedeem[receiver];
         require(pending.shares != 0 && shares <= pending.shares, Errors.InvalidSharesAmount());
-        require(pending.assets != 0 && assetsWithFee <= pending.assets, Errors.InvalidAssetsAmount());
+        require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
         pending.shares -= shares;
-        pending.assets -= assetsWithFee;
-        totalPendingAssets -= assetsWithFee;
+        pending.assets -= assets;
+        totalPendingAssets -= assets;
 
-        emit RequestFulfilled(receiver, shares, assetsWithFee);
+        emit RequestFulfilled(receiver, shares, assets);
         // burn the shares from the vault and transfer the assets to the receiver
-        _withdraw(address(this), receiver, address(this), assetsWithFee, shares);
+        _withdraw(address(this), receiver, address(this), assets, shares);
     }
 
     /// @notice The operator can cancel a redeem request in case of an black swan event.
     /// @param receiver The address of the receiver of the assets.
     /// @param shares The amount of shares to cancel.
-    /// @param assetsWithFee The amount of assets to cancel including the fee.
-    function cancelRedeem(address receiver, uint256 shares, uint256 assetsWithFee) external requiresAuth {
+    /// @param assets The amount of assets to cancel.
+    function cancelRedeem(address receiver, uint256 shares, uint256 assets) external requiresAuth {
         PendingRedeem storage pending = _pendingRedeem[receiver];
         require(pending.shares != 0 && shares <= pending.shares, Errors.InvalidSharesAmount());
-        require(pending.assets != 0 && assetsWithFee <= pending.assets, Errors.InvalidAssetsAmount());
+        require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
         pending.shares -= shares;
-        pending.assets -= assetsWithFee;
-        totalPendingAssets -= assetsWithFee;
+        pending.assets -= assets;
+        totalPendingAssets -= assets;
 
-        emit RequestCancelled(receiver, shares, assetsWithFee);
+        emit RequestCancelled(receiver, shares, assets);
         // transfer the shares back to the owner
         _transfer(address(this), receiver, shares);
     }
@@ -238,29 +224,6 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         require(newMaxPercentageChange < MAX_PERCENTAGE_THRESHOLD, Errors.InvalidMaxPercentage());
         emit MaxPercentageUpdated(maxPercentageChange, newMaxPercentageChange);
         maxPercentageChange = newMaxPercentageChange;
-    }
-
-    /// @notice Update the fee charged for the vault operations.
-    /// @param newFee The new fee charged for the vault operations.
-    function updateWithdrawFee(uint256 newFee) external requiresAuth {
-        require(newFee < MAX_FEE, Errors.InvalidFee());
-        emit WithdrawFeeUpdated(feeOnWithdraw, newFee);
-        feeOnWithdraw = newFee;
-    }
-
-    /// @notice Update the fee charged for the vault operations.
-    /// @param newFee The new fee charged for the vault operations.
-    function updateDepositFee(uint256 newFee) external requiresAuth {
-        require(newFee < MAX_FEE, Errors.InvalidFee());
-        emit DepositFeeUpdated(feeOnDeposit, newFee);
-        feeOnDeposit = newFee;
-    }
-
-    /// @notice Update the address that receives the fees for the vault operations.
-    /// @param newFeeRecipient The new address that receives the fees for the vault operations.
-    function updateFeeRecipient(address newFeeRecipient) external requiresAuth {
-        emit FeeRecipientUpdated(feeRecipient, newFeeRecipient);
-        feeRecipient = newFeeRecipient;
     }
 
     //============================== VIEW FUNCTIONS ===============================
@@ -304,30 +267,6 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         super._update(from, to, value);
     }
 
-    /// @dev Preview taking an entry fee on deposit. See {IERC4626-previewDeposit}.
-    function previewDeposit(uint256 assets) public view virtual override returns (uint256) {
-        uint256 fee = _feeOnTotal(assets, feeOnDeposit);
-        return super.previewDeposit(assets - fee);
-    }
-
-    /// @dev Preview adding an entry fee on mint. See {IERC4626-previewMint}.
-    function previewMint(uint256 shares) public view virtual override returns (uint256) {
-        uint256 assets = super.previewMint(shares);
-        return assets + _feeOnRaw(assets, feeOnDeposit);
-    }
-
-    /// @dev Preview adding an exit fee on withdraw. See {IERC4626-previewWithdraw}.
-    function previewWithdraw(uint256 assets) public view virtual override returns (uint256) {
-        uint256 fee = _feeOnRaw(assets, feeOnWithdraw);
-        return super.previewWithdraw(assets + fee);
-    }
-
-    /// @dev Preview taking an exit fee on redeem. See {IERC4626-previewRedeem}.
-    function previewRedeem(uint256 shares) public view virtual override returns (uint256) {
-        uint256 assets = super.previewRedeem(shares);
-        return assets - _feeOnTotal(assets, feeOnWithdraw);
-    }
-
     function maxDeposit(address receiver) public view virtual override returns (uint256) {
         if (paused()) {
             return 0;
@@ -356,39 +295,6 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         return super.maxRedeem(owner);
     }
 
-    /// @dev Account for the fee charged for the vault operations if the fee recipient and fee are set.
-    function _withdraw(
-        address caller,
-        address receiver,
-        address owner,
-        uint256 assetsWithFee,
-        uint256 shares
-    )
-        internal
-        override
-    {
-        uint256 feeAmount = _feeOnTotal(assetsWithFee, feeOnWithdraw);
-        uint256 assets = assetsWithFee - feeAmount;
-        address recipient = feeRecipient;
-
-        super._withdraw(caller, receiver, owner, assets, shares);
-
-        if (feeAmount > 0 && recipient != address(0)) {
-            IERC20(asset()).safeTransfer(recipient, feeAmount);
-        }
-    }
-
-    function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
-        uint256 feeAmount = _feeOnTotal(assets, feeOnDeposit);
-        address recipient = feeRecipient;
-
-        super._deposit(caller, receiver, assets, shares);
-
-        if (feeAmount > 0 && recipient != address(0)) {
-            IERC20(asset()).safeTransfer(recipient, feeAmount);
-        }
-    }
-
     function _totalAssets(uint256 _underlyingBalances) internal view returns (uint256) {
         return IERC20(asset()).balanceOf(address(this)) + _underlyingBalances;
     }
@@ -405,18 +311,6 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         }
         uint256 diff = newPrice > oldPrice ? newPrice - oldPrice : oldPrice - newPrice;
         return diff.mulDiv(DENOMINATOR, oldPrice, Math.Rounding.Ceil);
-    }
-
-    /// @dev Calculates the fees that should be added to an amount `assets` that does not already include fees.
-    /// Used in {IERC4626-mint} and {IERC4626-withdraw} operations.
-    function _feeOnRaw(uint256 assets, uint256 feeBasisPoints) private pure returns (uint256) {
-        return assets.mulDiv(feeBasisPoints, DENOMINATOR, Math.Rounding.Ceil);
-    }
-
-    /// @dev Calculates the fee part of an amount `assets` that already includes fees.
-    /// Used in {IERC4626-deposit} and {IERC4626-redeem} operations.
-    function _feeOnTotal(uint256 assets, uint256 feeBasisPoints) private pure returns (uint256) {
-        return assets.mulDiv(feeBasisPoints, feeBasisPoints + DENOMINATOR, Math.Rounding.Ceil);
     }
 
     /// @dev The available balance is the balance of the vault minus the total pending assets.

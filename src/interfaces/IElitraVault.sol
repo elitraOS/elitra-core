@@ -9,21 +9,6 @@ interface IElitraVault {
         uint256 shares;
     }
 
-    /// @notice Emitted when the fee is updated
-    /// @param lastFee The last fee
-    /// @param newFee The new fee
-    event WithdrawFeeUpdated(uint256 lastFee, uint256 newFee);
-
-    /// @notice Emitted when the fee is updated
-    /// @param lastFee The last fee
-    /// @param newFee The new fee
-    event DepositFeeUpdated(uint256 lastFee, uint256 newFee);
-
-    /// @notice Emitted when the fee recipient is updated
-    /// @param lastFeeRecipient The last fee recipient
-    /// @param newFeeRecipient The new fee recipient
-    event FeeRecipientUpdated(address lastFeeRecipient, address newFeeRecipient);
-
     /// @notice Emitted when the max percentage is updated
     /// @param lastMaxPercentage The last max percentage
     /// @param newMaxPercentage The new max percentage
