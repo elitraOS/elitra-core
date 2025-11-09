@@ -1,26 +1,31 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Base_Test } from "./Base.t.sol";
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+import { ElitraVault_Base_Test } from "./Base.t.sol";
+import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 
-contract Deposit_Unit_Concrete_Test is Base_Test {
-    using Math for uint256;
+contract Deposit_Test is ElitraVault_Base_Test {
+    address public alice;
 
     function setUp() public override {
-        Base_Test.setUp();
-        vm.startPrank({ msgSender: users.alice });
+        super.setUp();
+        alice = createUser("alice");
     }
 
-    function test_deposit_success() public {
-        uint256 amount = 100 * 1e6;
-        uint256 aliceBalanceBefore = depositVault.balanceOf(users.alice);
-        assertTrue(aliceBalanceBefore == 0, "Alice balance before is not 0");
+    function test_Deposit_MintsCorrectShares() public {
+        vm.prank(alice);
+        uint256 shares = vault.deposit(1000e6, alice);
 
-        vm.expectCall(address(usdc), abi.encodeCall(usdc.transferFrom, (users.alice, address(depositVault), amount)));
-        depositVault.deposit(amount, users.alice);
+        assertEq(shares, 1000e6); // 1:1 on first deposit
+        assertEq(vault.balanceOf(alice), 1000e6);
+        assertEq(asset.balanceOf(address(vault)), 1000e6);
+    }
 
-        uint256 aliceBalanceAfter = depositVault.balanceOf(users.alice);
-        assertTrue(aliceBalanceAfter == amount, "Alice balance after is not the amount");
+    function test_Deposit_EmitsDepositEvent() public {
+        vm.expectEmit(true, true, true, true);
+        emit IERC4626.Deposit(alice, alice, 1000e6, 1000e6);
+
+        vm.prank(alice);
+        vault.deposit(1000e6, alice);
     }
 }

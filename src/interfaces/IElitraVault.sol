@@ -1,45 +1,54 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { IOracleAdapter } from "./IOracleAdapter.sol";
+import { IRedemptionStrategy } from "./IRedemptionStrategy.sol";
+
 /// @title IElitraVault
-/// @notice Interface for the Elitra vault part of the Elitra protocol
-interface IElitraVault {
+/// @notice Interface for ElitraVault with adapter integration
+interface IElitraVault is IERC4626 {
+    /// @notice Pending redemption data structure
     struct PendingRedeem {
-        uint256 assets;
         uint256 shares;
+        uint256 assets;
     }
 
-    /// @notice Emitted when the max percentage is updated
-    /// @param lastMaxPercentage The last max percentage
-    /// @param newMaxPercentage The new max percentage
-    event MaxPercentageUpdated(uint256 lastMaxPercentage, uint256 newMaxPercentage);
-
-    /// @notice Emitted when the underlying balance is updated by the oracle
-    /// @param lastUnderlyingBalance The last underlying balance
-    /// @param newUnderlyingBalance The new underlying balance
-    event UnderlyingBalanceUpdated(uint256 lastUnderlyingBalance, uint256 newUnderlyingBalance);
-
-    /// @notice Emitted when a new redeem request is created
-    /// @param receiver The receiving address
-    /// @param owner The owner address
-    /// @param assets The assets amount
-    /// @param shares The shares amount
-    /// @param instant The instant status
+    // Events
+    event UnderlyingBalanceUpdated(uint256 oldBalance, uint256 newBalance);
+    event OracleAdapterUpdated(address indexed oldAdapter, address indexed newAdapter);
+    event RedemptionStrategyUpdated(address indexed oldStrategy, address indexed newStrategy);
     event RedeemRequest(
-        address indexed receiver, address indexed owner, uint256 assets, uint256 shares, bool indexed instant
+        address indexed receiver,
+        address indexed owner,
+        uint256 assets,
+        uint256 shares,
+        bool instant
     );
-
-    /// @notice Emitted when a redeem request is fulfilled
-    /// @param receiver The receiving address
-    /// @param shares The shares amount
-    /// @param assets The assets amount
     event RequestFulfilled(address indexed receiver, uint256 shares, uint256 assets);
-
-    /// @notice Emitted when a redeem request is cancelled
-    /// @param receiver The receiving address
-    /// @param shares The shares amount
-    /// @param assets The assets amount
     event RequestCancelled(address indexed receiver, uint256 shares, uint256 assets);
 
-    function requestRedeem(uint256 shares, address receiver, address owner) external returns (uint256 requestId);
+    // Oracle integration
+    function setAggregatedBalance(uint256 newBalance, uint256 newPPS) external;
+    function setOracleAdapter(IOracleAdapter adapter) external;
+    function oracleAdapter() external view returns (IOracleAdapter);
+    function lastBlockUpdated() external view returns (uint256);
+    function lastPricePerShare() external view returns (uint256);
+    function aggregatedUnderlyingBalances() external view returns (uint256);
+
+    // Redemption integration
+    function setRedemptionStrategy(IRedemptionStrategy strategy) external;
+    function redemptionStrategy() external view returns (IRedemptionStrategy);
+    function getAvailableBalance() external view returns (uint256);
+    function requestRedeem(uint256 shares, address receiver, address owner) external returns (uint256);
+    function fulfillRedeem(address receiver, uint256 shares, uint256 assets) external;
+    function cancelRedeem(address receiver, uint256 shares, uint256 assets) external;
+    function pendingRedeemRequest(address user) external view returns (uint256 assets, uint256 pendingShares);
+
+    // Strategy management
+    function manage(address target, bytes calldata data, uint256 value) external returns (bytes memory);
+
+    // Emergency controls
+    function pause() external;
+    function unpause() external;
 }

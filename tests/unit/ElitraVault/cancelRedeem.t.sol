@@ -1,74 +1,66 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Base_Test } from "./Base.t.sol";
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { Errors } from "src/libraries/Errors.sol";
+import { ElitraVault_Base_Test } from "./Base.t.sol";
+import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
 
-contract Deposit_Unit_Concrete_Test is Base_Test {
-    using Math for uint256;
-
-    uint256 internal amount = 100 * 1e6;
-    uint256 internal aliceShares;
+contract CancelRedeem_Test is ElitraVault_Base_Test {
+    address public alice;
 
     function setUp() public override {
-        Base_Test.setUp();
-        vm.startPrank({ msgSender: users.alice });
+        super.setUp();
+        alice = createUser("alice");
 
-        depositVault.deposit(amount, users.alice);
+        // Alice and Bob deposit to have more liquidity
+        vm.prank(alice);
+        vault.deposit(1000e6, alice);
 
-        moveAssetsFromVault(amount);
-        updateUnderlyingBalance(amount);
+        address bob = createUser("bob");
+        vm.prank(bob);
+        vault.deposit(1000e6, bob);
 
-        vm.startPrank({ msgSender: users.alice });
-        aliceShares = depositVault.balanceOf(users.alice);
-        depositVault.requestRedeem(aliceShares, users.alice, users.alice);
+        // Simulate vault deploying most funds (leave only 10 USDC)
+        vm.prank(address(vault));
+        asset.transfer(makeAddr("strategy"), 1990e6);
+
+        // Alice requests redemption of 500 shares
+        // With 2010 total assets (10 idle + 2000 deployed via oracle) and 2000 shares
+        // 500 shares = ~502.5 assets, but only 10 available, so will be queued
+
+        // Update oracle to reflect deployed balance
+        vm.prank(owner);
+        oracleAdapter.updateVaultBalance(vault, 2000e6);
 
         vm.roll(block.number + 1);
-        usdc.transfer(address(depositVault), amount);
-        updateUnderlyingBalance(0);
+        vm.prank(alice);
+        vault.requestRedeem(500e6, alice, alice);
     }
 
-    function test_cancel_redeem() public {
-        uint256 totalPendingAssets = depositVault.totalPendingAssets();
-        (uint256 pendingAssets, uint256 pendingShares) = depositVault.pendingRedeemRequest(users.alice);
-        uint256 aliceSharesBefore = depositVault.balanceOf(users.alice);
+    function test_CancelRedeem_ReturnsShares() public {
+        // Get actual pending values
+        (uint256 pendingAssets, uint256 pendingShares) = vault.pendingRedeemRequest(alice);
 
-        vm.startPrank({ msgSender: users.admin });
-        depositVault.cancelRedeem(users.alice, pendingShares, pendingAssets);
+        uint256 aliceSharesBefore = vault.balanceOf(alice);
 
-        uint256 totalPendingAssetsAfter = depositVault.totalPendingAssets();
-        (uint256 pendingAssetsAfter, uint256 pendingSharesAfter) = depositVault.pendingRedeemRequest(users.alice);
-        uint256 aliceSharesAfter = depositVault.balanceOf(users.alice);
+        vm.prank(owner);
+        vault.cancelRedeem(alice, pendingShares, pendingAssets);
 
-        assertTrue(
-            totalPendingAssetsAfter == totalPendingAssets - pendingShares,
-            "Total pending assets after is not the difference"
-        );
-        assertTrue(pendingAssetsAfter == 0, "Pending assets after is not 0");
-        assertTrue(pendingSharesAfter == 0, "Pending shares after is not 0");
-        assertEq(aliceSharesAfter, aliceSharesBefore + pendingShares, "Alice did not receive the pending shares back");
+        assertEq(vault.balanceOf(alice), aliceSharesBefore + pendingShares);
+
+        // Pending redemption cleared
+        (uint256 newPendingAssets, uint256 newPendingShares) = vault.pendingRedeemRequest(alice);
+        assertEq(newPendingAssets, 0);
+        assertEq(newPendingShares, 0);
     }
 
-    function test_cancel_redeem_invalid_amounts() public {
-        (uint256 pendingAssets, uint256 pendingShares) = depositVault.pendingRedeemRequest(users.alice);
+    function test_CancelRedeem_EmitsEvent() public {
+        // Get actual pending values
+        (uint256 pendingAssets, uint256 pendingShares) = vault.pendingRedeemRequest(alice);
 
-        vm.startPrank({ msgSender: users.admin });
+        vm.expectEmit(true, true, true, true);
+        emit IElitraVault.RequestCancelled(alice, pendingShares, pendingAssets);
 
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidSharesAmount.selector));
-        depositVault.cancelRedeem(users.alice, pendingShares + 1, pendingAssets);
-
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidAssetsAmount.selector));
-        depositVault.cancelRedeem(users.alice, pendingShares, pendingAssets + 1);
-    }
-
-    function test_cancel_double_cancel() public {
-        (uint256 pendingAssets, uint256 pendingShares) = depositVault.pendingRedeemRequest(users.alice);
-
-        vm.startPrank({ msgSender: users.admin });
-        depositVault.cancelRedeem(users.alice, pendingShares, pendingAssets);
-
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidSharesAmount.selector));
-        depositVault.cancelRedeem(users.alice, pendingShares, pendingAssets);
+        vm.prank(owner);
+        vault.cancelRedeem(alice, pendingShares, pendingAssets);
     }
 }

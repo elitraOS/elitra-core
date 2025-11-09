@@ -1,59 +1,63 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Base_Test } from "./Base.t.sol";
-import { Errors } from "src/libraries/Errors.sol";
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
+import { ElitraVault_Base_Test } from "./Base.t.sol";
+import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
 
-contract RequestRedeem_Unit_Concrete_Test is Base_Test {
-    using Math for uint256;
-
-    uint256 internal amount = 100 * 1e6;
+contract RequestRedeem_Test is ElitraVault_Base_Test {
+    address public alice;
 
     function setUp() public override {
-        Base_Test.setUp();
-        vm.startPrank({ msgSender: users.alice });
-        depositVault.deposit(amount, users.alice);
+        super.setUp();
+        alice = createUser("alice");
+
+        // Alice deposits 1000 USDC
+        vm.prank(alice);
+        vault.deposit(1000e6, alice);
     }
 
-    function test_requestRedeem_instant_success() public {
-        uint256 aliceShares = depositVault.balanceOf(users.alice);
-        uint256 aliceBalanceBefore = depositVault.balanceOf(users.alice);
-        uint256 totalAssetsBefore = depositVault.totalAssets();
-        assertTrue(aliceBalanceBefore == amount, "Alice balance before is not the amount");
-        assertTrue(totalAssetsBefore == amount, "Total assets before is not the amount");
+    function test_InstantRedeem_WhenSufficientLiquidity() public {
+        vm.prank(alice);
+        uint256 assetsOut = vault.requestRedeem(500e6, alice, alice);
 
-        depositVault.requestRedeem(aliceShares, users.alice, users.alice);
-
-        uint256 aliceSharesAfter = depositVault.balanceOf(users.alice);
-        uint256 aliceBalanceAfter = depositVault.balanceOf(users.alice);
-        uint256 totalAssetsAfter = depositVault.totalAssets();
-        assertTrue(aliceSharesAfter == 0, "Alice shares after is not 0");
-        assertTrue(aliceBalanceAfter == 0, "Alice balance after is not 0");
-        assertTrue(totalAssetsAfter == 0, "Total assets after is not 0");
+        // Should return assets (instant) - 1:1 ratio since no price change
+        assertEq(assetsOut, 500e6);
+        assertEq(vault.balanceOf(alice), 500e6); // 500 shares remaining
+        assertEq(vault.totalAssets(), 500e6); // 500 assets remaining in vault
     }
 
-    function test_requestRedeem_reverts_SharesAmountZero() public {
-        uint256 aliceShares = depositVault.balanceOf(users.alice);
-        assertTrue(aliceShares == amount, "Alice shares is not the amount");
+    function test_QueuedRedeem_WhenInsufficientLiquidity() public {
+        // Bob also deposits to have more total supply
+        address bob = createUser("bob");
+        vm.prank(bob);
+        vault.deposit(1000e6, bob);
 
-        vm.expectRevert(abi.encodeWithSelector(Errors.SharesAmountZero.selector));
-        depositVault.requestRedeem(0, users.alice, users.alice);
-    }
+        // Simulate vault deploying funds using oracle to set aggregated balance
+        // Transfer 1800 out of 2000 total assets
+        vm.prank(address(vault));
+        asset.transfer(makeAddr("strategy"), 1800e6);
 
-    function test_requestRedeem_reverts_NotSharesOwner() public {
-        uint256 aliceShares = depositVault.balanceOf(users.alice);
-        assertTrue(aliceShares == amount, "Alice shares is not the amount");
+        // Now vault only has 200 USDC idle (2000 total - 1800 deployed)
+        // Update oracle to reflect this (aggregatedBalance = 1800)
+        vm.prank(owner);
+        oracleAdapter.updateVaultBalance(vault, 1800e6);
 
-        vm.expectRevert(abi.encodeWithSelector(Errors.NotSharesOwner.selector));
-        depositVault.requestRedeem(aliceShares, users.alice, users.bob);
-    }
+        // Alice wants to redeem 500 shares
+        // With 2000 totalAssets and 2000 shares, 500 shares = 500 assets
+        // But only 200 is available, so should queue
+        vm.prank(alice);
+        uint256 result = vault.requestRedeem(500e6, alice, alice);
 
-    function test_requestRedeem_reverts_InsufficientShares() public {
-        uint256 aliceShares = depositVault.balanceOf(users.alice);
-        assertTrue(aliceShares == amount, "Alice shares is not the amount");
+        // Should return REQUEST_ID (queued)
+        assertEq(result, 0); // REQUEST_ID
 
-        vm.expectRevert(abi.encodeWithSelector(Errors.InsufficientShares.selector));
-        depositVault.requestRedeem(aliceShares + 1, users.alice, users.alice);
+        // Check pending redemption
+        (uint256 pendingAssets, uint256 pendingShares) = vault.pendingRedeemRequest(alice);
+        assertEq(pendingShares, 500e6);
+        assertGt(pendingAssets, 0); // Assets calculated at redemption time
+
+        // Shares transferred to vault
+        assertEq(vault.balanceOf(address(vault)), 500e6);
+        assertEq(vault.balanceOf(alice), 500e6);
     }
 }

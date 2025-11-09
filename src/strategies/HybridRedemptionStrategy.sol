@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import { IRedemptionStrategy, RedemptionMode } from "../interfaces/IRedemptionStrategy.sol";
-import { IElitraVaultV2 } from "../interfaces/IElitraVaultV2.sol";
+import { IElitraVault } from "../interfaces/IElitraVault.sol";
 
 /// @title HybridRedemptionStrategy
 /// @notice Redemption strategy: instant if liquidity available, else queue
@@ -16,7 +16,7 @@ contract HybridRedemptionStrategy is IRedemptionStrategy {
 
     /// @inheritdoc IRedemptionStrategy
     function processRedemption(
-        IElitraVaultV2 vault,
+        IElitraVault vault,
         uint256 shares,
         uint256 assets,
         address owner,

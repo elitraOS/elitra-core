@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { ElitraVaultV2_Base_Test } from "./Base.t.sol";
+import { ElitraVault_Base_Test } from "./Base.t.sol";
 import { Errors } from "../../../src/libraries/Errors.sol";
 
-contract OracleIntegration_Test is ElitraVaultV2_Base_Test {
+contract OracleIntegration_Test is ElitraVault_Base_Test {
     address public alice;
 
     function setUp() public override {

@@ -1,85 +1,74 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity >=0.8.28 <0.9.0;
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
 
-import "forge-std/Script.sol";
-import { ElitraVault } from "src/ElitraVault.sol";
-import { RolesAuthority } from "@solmate/auth/authorities/RolesAuthority.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { Script } from "forge-std/Script.sol";
+import { console2 } from "forge-std/console2.sol";
+import { ElitraVault } from "../src/ElitraVault.sol";
+import { ManualOracleAdapter } from "../src/adapters/ManualOracleAdapter.sol";
+import { HybridRedemptionStrategy } from "../src/strategies/HybridRedemptionStrategy.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-import { BaseScript } from "./Base.s.sol";
+contract Deploy is Script {
+    function run() public {
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(deployerPrivateKey);
+        address owner = vm.envOr("OWNER", deployer);
+        address proxyAdmin = vm.envOr("PROXY_ADMIN", deployer);
+        address asset = vm.envAddress("ASSET_ADDRESS"); // USDC address
 
-contract Deploy is BaseScript {
-    function run(
-        string memory _name,
-        string memory _symbol,
-        address _asset,
-        address _owner,
-        address _authority,
-        address _vault,
-        uint256 _depositAmount,
-        bool _pause
-    )
-        public
-        broadcast
-        returns (ElitraVault vault, RolesAuthority authority)
-    {
-        console.log("Deploying vault...");
-        console.log("Name: ", _name);
-        console.log("Symbol: ", _symbol);
-        console.log("Asset: ", _asset);
-        console.log("Owner: ", _owner);
-        console.log("Authority: ", _authority);
-        console.log("Vault: ", _vault);
+        console2.log("Deployer:", deployer);
+        console2.log("Owner:", owner);
+        console2.log("Asset:", asset);
 
-        require(_owner != address(0), "No Owner address set");
-        require(_asset != address(0), "Asset address not set");
+        vm.startBroadcast(deployerPrivateKey);
 
-        console.log("BlockNumber: ", block.number);
+        // 1. Deploy adapters
+        console2.log("Deploying ManualOracleAdapter...");
+        ManualOracleAdapter oracleAdapter = new ManualOracleAdapter(owner);
+        console2.log("ManualOracleAdapter:", address(oracleAdapter));
 
-        if (_authority == address(0)) {
-            authority = new RolesAuthority(_owner, RolesAuthority(address(0)));
-            console.log("Authority deployed at: ", address(authority));
-        } else {
-            authority = RolesAuthority(_authority);
-        }
+        console2.log("Deploying HybridRedemptionStrategy...");
+        HybridRedemptionStrategy redemptionStrategy = new HybridRedemptionStrategy();
+        console2.log("HybridRedemptionStrategy:", address(redemptionStrategy));
 
-        ElitraVault impl;
-        if (_vault == address(0)) {
-            impl = new ElitraVault();
-            console.log("ElitraVault implementation deployed at: ", address(impl));
-        } else {
-            impl = ElitraVault(payable(_vault));
-        }
-        console.log("ElitraVault implementation deployed at: ", address(impl));
+        // 2. Deploy vault implementation
+        console2.log("Deploying ElitraVault implementation...");
+        ElitraVault implementation = new ElitraVault();
+        console2.log("ElitraVault implementation:", address(implementation));
 
-        bytes memory data = abi.encodeWithSelector(vault.initialize.selector, IERC20(_asset), _owner, _name, _symbol);
+        // 3. Deploy proxy
+        string memory name = "Elitra USDC Vault";
+        string memory symbol = "eUSDC";
 
-        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(address(impl), _owner, data);
+        bytes memory initData = abi.encodeWithSelector(
+            ElitraVault.initialize.selector,
+            asset,
+            owner,
+            address(oracleAdapter),
+            address(redemptionStrategy),
+            name,
+            symbol
+        );
 
-        vault = ElitraVault(payable(address(proxy)));
-        console.log("ElitraVault proxy deployed at: ", address(vault));
+        console2.log("Deploying TransparentUpgradeableProxy...");
+        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
+            address(implementation),
+            proxyAdmin,
+            initData
+        );
+        console2.log("Proxy (ElitraVault):", address(proxy));
 
-        vault.setAuthority(authority);
-        console.log("Authority set for vault");
+        vm.stopBroadcast();
 
-        if (_depositAmount > 0) {
-            IERC20(_asset).approve(address(vault), _depositAmount);
-            vault.deposit(_depositAmount, _owner);
-            console.log("Deposited: ", _depositAmount);
-        }
+        console2.log("\n=== Deployment Summary ===");
+        console2.log("ManualOracleAdapter:", address(oracleAdapter));
+        console2.log("HybridRedemptionStrategy:", address(redemptionStrategy));
+        console2.log("ElitraVault implementation:", address(implementation));
+        console2.log("ElitraVault proxy:", address(proxy));
+    }
 
-        if (_pause) {
-            vault.pause();
-        }
-
-        console.log("\nVault data:");
-        console.log("Underlying asset:", address(vault.asset()));
-        console.log("Name:", vault.name());
-        console.log("Symbol:", vault.symbol());
-        console.log("Owner:", vault.owner());
-        console.log("Total Supply:", vault.totalSupply());
-        console.log("Paused:", vault.paused());
-        console.log("Authority:", address(vault.authority()));
+    function test() public {
+        // Required for forge coverage to work
     }
 }

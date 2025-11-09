@@ -2,14 +2,14 @@
 pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
-import { ElitraVaultV2 } from "../../src/ElitraVaultV2.sol";
+import { ElitraVault } from "../../src/ElitraVault.sol";
 import { ManualOracleAdapter } from "../../src/adapters/ManualOracleAdapter.sol";
 import { HybridRedemptionStrategy } from "../../src/strategies/HybridRedemptionStrategy.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-contract VaultV2Integration_Test is Test {
-    ElitraVaultV2 public vault;
+contract VaultIntegration_Test is Test {
+    ElitraVault public vault;
     ManualOracleAdapter public oracleAdapter;
     HybridRedemptionStrategy public redemptionStrategy;
     ERC20Mock public usdc;
@@ -33,14 +33,14 @@ contract VaultV2Integration_Test is Test {
         redemptionStrategy = new HybridRedemptionStrategy();
 
         // Deploy vault
-        ElitraVaultV2 implementation = new ElitraVaultV2();
+        ElitraVault implementation = new ElitraVault();
         bytes memory initData = abi.encodeWithSelector(
-            ElitraVaultV2.initialize.selector,
+            ElitraVault.initialize.selector,
             address(usdc),
             owner,
             address(oracleAdapter),
             address(redemptionStrategy),
-            "Elitra USDC Vault V2",
+            "Elitra USDC Vault",
             "eUSDC-v2"
         );
 
@@ -49,7 +49,7 @@ contract VaultV2Integration_Test is Test {
             owner,
             initData
         );
-        vault = ElitraVaultV2(payable(address(proxy)));
+        vault = ElitraVault(payable(address(proxy)));
 
         // Fund users
         usdc.mint(alice, 10_000e6);

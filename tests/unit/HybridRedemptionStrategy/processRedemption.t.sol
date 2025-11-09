@@ -3,19 +3,19 @@ pragma solidity 0.8.28;
 
 import { HybridRedemptionStrategy_Base_Test } from "./Base.t.sol";
 import { RedemptionMode } from "../../../src/interfaces/IRedemptionStrategy.sol";
-import { IElitraVaultV2 } from "../../../src/interfaces/IElitraVaultV2.sol";
+import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
 
 contract ProcessRedemption_Test is HybridRedemptionStrategy_Base_Test {
     function test_ReturnsInstant_WhenSufficientLiquidity() public {
         // Mock vault to return sufficient balance
         vm.mockCall(
             vault,
-            abi.encodeWithSelector(IElitraVaultV2.getAvailableBalance.selector),
+            abi.encodeWithSelector(IElitraVault.getAvailableBalance.selector),
             abi.encode(1000e6) // 1000 USDC available
         );
 
         (RedemptionMode mode, uint256 actualAssets) = strategy.processRedemption(
-            IElitraVaultV2(vault),
+            IElitraVault(vault),
             100, // shares
             500e6, // 500 USDC needed
             address(this),
@@ -30,12 +30,12 @@ contract ProcessRedemption_Test is HybridRedemptionStrategy_Base_Test {
         // Mock vault to return insufficient balance
         vm.mockCall(
             vault,
-            abi.encodeWithSelector(IElitraVaultV2.getAvailableBalance.selector),
+            abi.encodeWithSelector(IElitraVault.getAvailableBalance.selector),
             abi.encode(100e6) // Only 100 USDC available
         );
 
         (RedemptionMode mode, uint256 actualAssets) = strategy.processRedemption(
-            IElitraVaultV2(vault),
+            IElitraVault(vault),
             100, // shares
             500e6, // 500 USDC needed
             address(this),

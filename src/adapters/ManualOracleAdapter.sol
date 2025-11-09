@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { Errors } from "../libraries/Errors.sol";
 import { IOracleAdapter } from "../interfaces/IOracleAdapter.sol";
-import { IElitraVaultV2 } from "../interfaces/IElitraVaultV2.sol";
+import { IElitraVault } from "../interfaces/IElitraVault.sol";
 import { Auth, Authority } from "@solmate/auth/Auth.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -26,7 +26,7 @@ contract ManualOracleAdapter is IOracleAdapter, Auth {
     }
 
     /// @inheritdoc IOracleAdapter
-    function updateVaultBalance(IElitraVaultV2 vault, uint256 newBalance)
+    function updateVaultBalance(IElitraVault vault, uint256 newBalance)
         external
         requiresAuth
         returns (bool)
@@ -42,7 +42,14 @@ contract ManualOracleAdapter is IOracleAdapter, Auth {
 
         // 3. Calculate new price per share
         uint256 totalAssets = idleAssets + newBalance;
-        uint256 newPPS = totalAssets.mulDiv(DENOMINATOR, totalSupply, Math.Rounding.Floor);
+        uint256 newPPS;
+
+        // If there are no shares, set initial PPS to 1:1 (DENOMINATOR)
+        if (totalSupply == 0) {
+            newPPS = DENOMINATOR;
+        } else {
+            newPPS = totalAssets.mulDiv(DENOMINATOR, totalSupply, Math.Rounding.Floor);
+        }
 
         // 4. Check price change threshold
         uint256 percentageChange = _calculatePercentageChange(lastPPS, newPPS);

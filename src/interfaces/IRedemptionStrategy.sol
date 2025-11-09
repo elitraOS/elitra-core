@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { IElitraVaultV2 } from "./IElitraVaultV2.sol";
+import { IElitraVault } from "./IElitraVault.sol";
 
 /// @notice Redemption mode returned by strategy
 enum RedemptionMode {
@@ -21,7 +21,7 @@ interface IRedemptionStrategy {
     /// @return mode INSTANT or QUEUED
     /// @return actualAssets Assets to withdraw (may differ due to strategy rules)
     function processRedemption(
-        IElitraVaultV2 vault,
+        IElitraVault vault,
         uint256 shares,
         uint256 assets,
         address owner,

@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 import { HybridRedemptionStrategy } from "../../../src/strategies/HybridRedemptionStrategy.sol";
-import { IElitraVaultV2 } from "../../../src/interfaces/IElitraVaultV2.sol";
+import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
 
 contract HybridRedemptionStrategy_Base_Test is Test {
     HybridRedemptionStrategy public strategy;

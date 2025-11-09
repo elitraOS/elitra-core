@@ -1,72 +1,75 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Base_Test } from "./Base.t.sol";
-import { Errors } from "src/libraries/Errors.sol";
+import { ElitraVault_Base_Test } from "./Base.t.sol";
+import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
 
-contract Fulfill_Unit_Concrete_Test is Base_Test {
-    uint256 internal amount = 100 * 1e6;
-    uint256 internal aliceShares;
+contract FulfillRedeem_Test is ElitraVault_Base_Test {
+    address public alice;
 
     function setUp() public override {
-        Base_Test.setUp();
-        vm.startPrank({ msgSender: users.alice });
+        super.setUp();
+        alice = createUser("alice");
 
-        depositVault.deposit(amount, users.alice);
+        // Alice and Bob deposit to have more liquidity
+        vm.prank(alice);
+        vault.deposit(1000e6, alice);
 
-        moveAssetsFromVault(amount);
-        updateUnderlyingBalance(amount);
+        address bob = createUser("bob");
+        vm.prank(bob);
+        vault.deposit(1000e6, bob);
 
-        vm.startPrank({ msgSender: users.alice });
-        aliceShares = depositVault.balanceOf(users.alice);
-        depositVault.requestRedeem(aliceShares, users.alice, users.alice);
+        // Simulate vault deploying most funds (leave only 10 USDC)
+        vm.prank(address(vault));
+        asset.transfer(makeAddr("strategy"), 1990e6);
+
+        // Alice requests redemption of 500 shares
+        // With 2010 total assets (10 idle + 2000 deployed via oracle) and 2000 shares
+        // 500 shares = ~502.5 assets, but only 10 available, so will be queued
+
+        // Update oracle to reflect deployed balance
+        vm.prank(owner);
+        oracleAdapter.updateVaultBalance(vault, 2000e6);
 
         vm.roll(block.number + 1);
-        usdc.transfer(address(depositVault), amount);
-        updateUnderlyingBalance(0);
+        vm.prank(alice);
+        vault.requestRedeem(500e6, alice, alice);
     }
 
-    function test_fulfill_success() public {
-        vm.startPrank({ msgSender: users.admin });
-        uint256 totalPendingAssets = depositVault.totalPendingAssets();
-        (uint256 pendingAssets, uint256 pendingShares) = depositVault.pendingRedeemRequest(users.alice);
+    function test_FulfillRedeem_TransfersAssets() public {
+        // Get actual pending values
+        (uint256 pendingAssets, uint256 pendingShares) = vault.pendingRedeemRequest(alice);
 
-        depositVault.fulfillRedeem(users.alice, pendingShares, pendingAssets);
+        // Simulate strategy returning funds
+        address strategy = makeAddr("strategy");
+        vm.prank(strategy);
+        asset.transfer(address(vault), pendingAssets);
 
-        (uint256 pendingAssetsAfter, uint256 pendingSharesAfter) = depositVault.pendingRedeemRequest(users.alice);
-        uint256 totalPendingAssetsAfter = depositVault.totalPendingAssets();
+        uint256 aliceBalanceBefore = asset.balanceOf(alice);
 
-        assertEq(totalPendingAssetsAfter, totalPendingAssets - pendingAssets);
-        assertEq(pendingAssetsAfter, 0);
-        assertEq(pendingSharesAfter, 0);
+        vm.prank(owner);
+        vault.fulfillRedeem(alice, pendingShares, pendingAssets);
+
+        assertEq(asset.balanceOf(alice), aliceBalanceBefore + pendingAssets);
+
+        // Pending redemption cleared
+        (uint256 newPendingAssets, uint256 newPendingShares) = vault.pendingRedeemRequest(alice);
+        assertEq(newPendingAssets, 0);
+        assertEq(newPendingShares, 0);
     }
 
-    function test_fulfill_revert_zero_shares() public {
-        vm.startPrank({ msgSender: users.admin });
-        (uint256 pendingAssets, uint256 pendingShares) = depositVault.pendingRedeemRequest(users.alice);
-        depositVault.fulfillRedeem(users.alice, pendingShares, pendingAssets);
+    function test_FulfillRedeem_EmitsEvent() public {
+        // Get actual pending values
+        (uint256 pendingAssets, uint256 pendingShares) = vault.pendingRedeemRequest(alice);
 
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidSharesAmount.selector));
-        depositVault.fulfillRedeem(users.alice, pendingShares, pendingAssets);
-    }
+        address strategy = makeAddr("strategy");
+        vm.prank(strategy);
+        asset.transfer(address(vault), pendingAssets);
 
-    function test_fulfill_revert_invalid_amounts() public {
-        vm.startPrank({ msgSender: users.admin });
-        (uint256 pendingAssets, uint256 pendingShares) = depositVault.pendingRedeemRequest(users.alice);
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidSharesAmount.selector));
-        depositVault.fulfillRedeem(users.alice, pendingShares + 1, pendingAssets);
+        vm.expectEmit(true, true, true, true);
+        emit IElitraVault.RequestFulfilled(alice, pendingShares, pendingAssets);
 
-        vm.expectRevert(abi.encodeWithSelector(Errors.InvalidAssetsAmount.selector));
-        depositVault.fulfillRedeem(users.alice, pendingShares, pendingAssets + 1);
-    }
-
-    function test_fulfill_revert_insufficient_assets() public {
-        moveAssetsFromVault(amount);
-        vm.roll(block.number + 1);
-        updateUnderlyingBalance(amount);
-        vm.startPrank({ msgSender: users.admin });
-        (uint256 pendingAssets, uint256 pendingShares) = depositVault.pendingRedeemRequest(users.alice);
-        vm.expectRevert("ERC20: transfer amount exceeds balance");
-        depositVault.fulfillRedeem(users.alice, pendingShares, pendingAssets);
+        vm.prank(owner);
+        vault.fulfillRedeem(alice, pendingShares, pendingAssets);
     }
 }

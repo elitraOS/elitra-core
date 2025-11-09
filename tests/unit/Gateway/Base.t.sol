@@ -17,6 +17,11 @@ import { MockAuthority } from "../../mocks/MockAuthority.sol";
 import { ElitraGateway } from "src/ElitraGateway.sol";
 import { ElitraVault } from "src/ElitraVault.sol";
 import { ElitraRegistry } from "src/ElitraRegistry.sol";
+import { IOracleAdapter } from "src/interfaces/IOracleAdapter.sol";
+import { IRedemptionStrategy } from "src/interfaces/IRedemptionStrategy.sol";
+import { HybridRedemptionStrategy } from "src/strategies/HybridRedemptionStrategy.sol";
+import { ManualOracleAdapter } from "src/adapters/ManualOracleAdapter.sol";
+import { ERC20Mock } from "../../mocks/ERC20Mock.sol";
 
 /// @notice Base test contract with common logic needed by all ElitraGateway tests.
 
@@ -32,30 +37,21 @@ abstract contract Gateway_Base_Test is Test, Events, Utils, Constants {
     ElitraGateway internal gateway;
     Authority internal authority;
     ElitraRegistry internal registry;
+    IOracleAdapter internal oracleAdapter;
+    IRedemptionStrategy internal redemptionStrategy;
 
     // Dummy address for testing unregistered vaults
     address internal constant DUMMY_VAULT = address(0x1234567890123456789012345678901234567890);
 
     // ====================================== SET-UP FUNCTION ======================================
     function setUp() public virtual {
-        vm.createSelectFork({
-            blockNumber: 29_066_193,
-            urlOrAlias: vm.envOr("BASE_RPC_URL", string("https://base.llamarpc.com"))
-        });
-
-        // USDC (https://basescan.org/token/0x833589fcd6edb6e08f4c7c32d4f71b54bda02913)
-        usdc = IERC20(0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913);
-
-        // Use existing ElitraVault deployment
-        elitraVault = ElitraVault(payable(0x0000000f2eB9f69274678c76222B35eEc7588a65));
-
-        // Label the base test contracts.
-        vm.label({ account: address(usdc), newLabel: "USDC" });
-        vm.label({ account: address(elitraVault), newLabel: "elitraUSDCVault" });
-
         // Create the admin.
         users.admin = payable(makeAddr({ name: "Admin" }));
         vm.startPrank({ msgSender: users.admin });
+
+        // Deploy mock USDC
+        usdc = new ERC20Mock();
+        vm.label({ account: address(usdc), newLabel: "USDC" });
 
         deployContracts();
 
@@ -79,7 +75,7 @@ abstract contract Gateway_Base_Test is Test, Events, Utils, Constants {
     function createUser(string memory name) internal returns (address payable, uint256) {
         (address user, uint256 key) = makeAddrAndKey(name);
         vm.deal({ account: user, newBalance: 100 ether });
-        deal({ token: address(usdc), to: user, give: 1_000_000e6, adjust: true });
+        ERC20Mock(address(usdc)).mint(user, 1_000_000e18);
         approveProtocol({ from: user });
         return (payable(user), key);
     }
@@ -94,6 +90,25 @@ abstract contract Gateway_Base_Test is Test, Events, Utils, Constants {
             new TransparentUpgradeableProxy(address(registryImpl), users.admin, registryData);
         registry = ElitraRegistry(payable(address(registryProxy)));
 
+        // Deploy oracle and redemption strategy
+        oracleAdapter = new ManualOracleAdapter(users.admin);
+        redemptionStrategy = new HybridRedemptionStrategy();
+
+        // Deploy ElitraVault
+        ElitraVault vaultImpl = new ElitraVault();
+        bytes memory vaultData = abi.encodeWithSelector(
+            ElitraVault.initialize.selector,
+            usdc,
+            users.admin,
+            oracleAdapter,
+            redemptionStrategy,
+            "Elitra USDC Vault",
+            "eUSDC"
+        );
+        TransparentUpgradeableProxy vaultProxy =
+            new TransparentUpgradeableProxy(address(vaultImpl), users.admin, vaultData);
+        elitraVault = ElitraVault(payable(address(vaultProxy)));
+
         // Deploy ElitraGateway
         ElitraGateway gatewayImpl = new ElitraGateway();
         bytes memory data = abi.encodeWithSelector(ElitraGateway.initialize.selector, address(registry));
@@ -105,11 +120,12 @@ abstract contract Gateway_Base_Test is Test, Events, Utils, Constants {
 
         MockAuthority(address(authority)).setUserRole(users.admin, ADMIN_ROLE, true);
 
-        // Add the existing vault to the registry
+        // Add the vault to the registry
         registry.addElitraVault(address(elitraVault));
 
         // Label the contracts
         vm.label({ account: address(gateway), newLabel: "ElitraGateway" });
         vm.label({ account: address(registry), newLabel: "ElitraRegistry" });
+        vm.label({ account: address(elitraVault), newLabel: "elitraUSDCVault" });
     }
 }

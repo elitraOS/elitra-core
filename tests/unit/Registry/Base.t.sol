@@ -23,11 +23,6 @@ abstract contract Registry_Base_Test is Test, Events, Utils, Constants {
 
     // ====================================== SET-UP FUNCTION ======================================
     function setUp() public virtual {
-        vm.createSelectFork({
-            blockNumber: 24_500_000, // Jan-02-2025 03:42:27 AM +UTC
-            urlOrAlias: vm.envOr("BASE_RPC_URL", string("https://base.llamarpc.com"))
-        });
-
         // Create the registry admin.
         users.admin = payable(makeAddr({ name: "Admin" }));
         vm.startPrank({ msgSender: users.admin });

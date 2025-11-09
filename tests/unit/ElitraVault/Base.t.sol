@@ -2,108 +2,60 @@
 pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
-
-import { Authority } from "src/base/AuthUpgradeable.sol";
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { ElitraVault } from "../../../src/ElitraVault.sol";
+import { ManualOracleAdapter } from "../../../src/adapters/ManualOracleAdapter.sol";
+import { HybridRedemptionStrategy } from "../../../src/strategies/HybridRedemptionStrategy.sol";
+import { ERC20Mock } from "../../mocks/ERC20Mock.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-import { Users } from "../../utils/Types.sol";
-import { Utils } from "../../utils/Utils.sol";
-import { Events } from "../../utils/Events.sol";
-import { Constants } from "../../utils/Constants.sol";
-import { MockAuthority } from "../../mocks/MockAuthority.sol";
+contract ElitraVault_Base_Test is Test {
+    ElitraVault public vaultImplementation;
+    ElitraVault public vault;
+    ManualOracleAdapter public oracleAdapter;
+    HybridRedemptionStrategy public redemptionStrategy;
+    ERC20Mock public asset;
 
-import { ElitraVault } from "src/ElitraVault.sol";
+    address public owner;
+    address public proxyAdmin;
 
-/// @notice Base test contract with common logic needed by all tests.
-
-abstract contract Base_Test is Test, Events, Utils, Constants {
-    using Math for uint256;
-
-    // ========================================= VARIABLES =========================================
-    Users internal users;
-
-    // ====================================== TEST CONTRACTS =======================================
-    IERC20 internal usdc;
-    ElitraVault internal depositVault;
-    Authority internal authority;
-
-    // ====================================== SET-UP FUNCTION ======================================
     function setUp() public virtual {
-        vm.createSelectFork({
-            urlOrAlias: vm.envOr("SEI_RPC_URL", string("https://evm-rpc.sei-apis.com"))
-        });
+        owner = makeAddr("owner");
+        proxyAdmin = makeAddr("proxyAdmin");
 
-        // USDC (https://seiscan.io/token/0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392)
-        usdc = IERC20(0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392);
+        // Deploy asset
+        asset = new ERC20Mock();
 
-        // Label the base test contracts.
-        vm.label({ account: address(usdc), newLabel: "USDC" });
+        // Deploy adapters
+        oracleAdapter = new ManualOracleAdapter(owner);
+        redemptionStrategy = new HybridRedemptionStrategy();
 
-        // Create the vault admin.
-        users.admin = payable(makeAddr({ name: "Admin" }));
-        vm.startPrank({ msgSender: users.admin });
+        // Deploy vault implementation
+        vaultImplementation = new ElitraVault();
 
-        deployDepositVault();
-
-        // Create users for testing.
-        (users.bob, users.bobKey) = createUser("Bob");
-        (users.alice, users.aliceKey) = createUser("Alice");
-    }
-
-    // ====================================== HELPERS =======================================
-
-    /// @dev Approves the protocol contracts to spend the user's USDC.
-    function approveProtocol(address from) internal {
-        resetPrank({ msgSender: from });
-        usdc.approve({ spender: address(depositVault), value: UINT256_MAX });
-        depositVault.approve({ spender: address(depositVault), value: UINT256_MAX });
-    }
-
-    /// @dev Generates a user, labels its address, funds it with test assets, and approves the protocol contracts.
-    function createUser(string memory name) internal returns (address payable, uint256) {
-        (address user, uint256 key) = makeAddrAndKey(name);
-        vm.deal({ account: user, newBalance: 100 ether });
-        deal({ token: address(usdc), to: user, give: 1_000_000e6, adjust: true });
-        approveProtocol({ from: user });
-        return (payable(user), key);
-    }
-
-    /// @dev Deploys the ElitraVault
-    function deployDepositVault() internal {
-        ElitraVault vault = new ElitraVault();
-
-        bytes memory data =
-            abi.encodeWithSelector(ElitraVault.initialize.selector, usdc, users.admin, "elitraUSDCVault", "elitraUSDC");
-
-        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(address(vault), users.admin, data);
-        depositVault = ElitraVault(payable(address(proxy)));
-
-        authority = new MockAuthority(users.admin, Authority(address(0)));
-        depositVault.setAuthority({ newAuthority: authority });
-
-        MockAuthority(address(authority)).setUserRole(users.admin, ADMIN_ROLE, true);
-
-        vm.label({ account: address(depositVault), newLabel: "elitraUSDCVault" });
-    }
-
-    function moveAssetsFromVault(uint256 assets) internal {
-        vm.startPrank({ msgSender: users.admin });
-        bytes memory data = abi.encodeWithSelector(IERC20.transfer.selector, users.admin, assets);
-
-        MockAuthority(address(depositVault.authority())).setRoleCapability(
-            ADMIN_ROLE, address(usdc), IERC20.transfer.selector, true
+        // Deploy proxy
+        bytes memory initData = abi.encodeWithSelector(
+            ElitraVault.initialize.selector,
+            address(asset),
+            owner,
+            address(oracleAdapter),
+            address(redemptionStrategy),
+            "Elitra USDC Vault",
+            "eUSDC-v2"
         );
 
-        depositVault.manage(address(usdc), data, 0);
+        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
+            address(vaultImplementation),
+            proxyAdmin,
+            initData
+        );
 
-        vm.stopPrank();
+        vault = ElitraVault(payable(address(proxy)));
     }
 
-    function updateUnderlyingBalance(uint256 assets) internal {
-        vm.startPrank({ msgSender: users.admin });
-        depositVault.onUnderlyingBalanceUpdate(assets);
-        vm.stopPrank();
+    function createUser(string memory name) internal returns (address user) {
+        user = makeAddr(name);
+        asset.mint(user, 1_000_000e6); // 1M USDC
+        vm.prank(user);
+        asset.approve(address(vault), type(uint256).max);
     }
 }

@@ -5,6 +5,7 @@ import { console } from "forge-std/console.sol";
 
 import { Gateway_Base_Test } from "./Base.t.sol";
 import { Errors } from "src/libraries/Errors.sol";
+import { IERC20Errors } from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 
 contract Deposit_Test is Gateway_Base_Test {
     // ========================================= EVENTS =========================================
@@ -114,7 +115,9 @@ contract Deposit_Test is Gateway_Base_Test {
 
         // Revoke allowance
         usdc.approve(address(gateway), 0);
-        vm.expectRevert("ERC20: transfer amount exceeds allowance");
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientAllowance.selector, address(gateway), 0, ASSETS)
+        );
         gateway.deposit(address(elitraVault), ASSETS, MIN_SHARES_OUT, users.bob, PARTNER_ID);
         vm.stopPrank();
     }
@@ -122,9 +125,11 @@ contract Deposit_Test is Gateway_Base_Test {
     function test_deposit_RevertWhen_InsufficientBalance() public {
         vm.startPrank(users.bob);
 
-        uint256 largeAmount = 10_000_000e6; // More than user has
+        uint256 largeAmount = 10_000_000e18; // More than user has
 
-        vm.expectRevert("ERC20: transfer amount exceeds balance");
+        vm.expectRevert(
+            abi.encodeWithSelector(IERC20Errors.ERC20InsufficientBalance.selector, users.bob, usdc.balanceOf(users.bob), largeAmount)
+        );
 
         gateway.deposit(address(elitraVault), largeAmount, MIN_SHARES_OUT, users.bob, PARTNER_ID);
 
