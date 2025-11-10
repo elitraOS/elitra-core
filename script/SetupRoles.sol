@@ -2,7 +2,6 @@
 pragma solidity >=0.8.28 <0.9.0;
 
 import "forge-std/Script.sol";
-import { ElitraEscrow } from "src/ElitraEscrow.sol";
 import { IWETH9 } from "src/interfaces/IWETH9.sol";
 import { RolesAuthority } from "@solmate/auth/authorities/RolesAuthority.sol";
 import { BaseScript } from "./Base.s.sol";
