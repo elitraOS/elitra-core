@@ -3,8 +3,8 @@ pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
 import { IElitraVault } from "./interfaces/IElitraVault.sol";
-import { IOracleAdapter } from "./interfaces/IOracleAdapter.sol";
-import { IRedemptionStrategy, RedemptionMode } from "./interfaces/IRedemptionStrategy.sol";
+import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
+import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
 import { Compatible } from "./base/Compatible.sol";
 import { AuthUpgradeable, Authority } from "./base/AuthUpgradeable.sol";
@@ -30,13 +30,13 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     uint256 internal constant REQUEST_ID = 0;
 
     // Oracle state
-    IOracleAdapter public oracleAdapter;
+    IBalanceUpdateHook public balanceUpdateHook;
     uint256 public aggregatedUnderlyingBalances;
     uint256 public lastBlockUpdated;
     uint256 public lastPricePerShare;
 
     // Redemption state
-    IRedemptionStrategy public redemptionStrategy;
+    IRedemptionHook public redemptionHook;
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
     uint256 public totalPendingAssets;
 
@@ -49,8 +49,8 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     function initialize(
         IERC20 _asset,
         address _owner,
-        IOracleAdapter _oracleAdapter,
-        IRedemptionStrategy _redemptionStrategy,
+        IBalanceUpdateHook _balanceUpdateHook,
+        IRedemptionHook _redemptionHook,
         string memory _name,
         string memory _symbol
     ) public initializer {
@@ -60,31 +60,47 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         __Auth_init(_owner, Authority(address(0)));
         __Pausable_init();
 
-        require(address(_oracleAdapter) != address(0), Errors.ZeroAddress());
-        require(address(_redemptionStrategy) != address(0), Errors.ZeroAddress());
+        require(address(_balanceUpdateHook) != address(0), Errors.ZeroAddress());
+        require(address(_redemptionHook) != address(0), Errors.ZeroAddress());
 
-        oracleAdapter = _oracleAdapter;
-        redemptionStrategy = _redemptionStrategy;
+        balanceUpdateHook = _balanceUpdateHook;
+        redemptionHook = _redemptionHook;
     }
 
     // ========================================= ORACLE INTEGRATION =========================================
 
     /// @inheritdoc IElitraVault
-    function setAggregatedBalance(uint256 newBalance, uint256 newPPS) external {
-        require(msg.sender == address(oracleAdapter), Errors.OnlyOracleAdapter());
+    function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
+        // 1. Validate not already updated this block
+        require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
 
-        emit UnderlyingBalanceUpdated(aggregatedUnderlyingBalances, newBalance);
+        // 2. Pull validation from balance update hook (read-only)
+        (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
+            lastPricePerShare,
+            totalSupply(),
+            IERC20(asset()).balanceOf(address(this)),
+            newAggregatedBalance
+        );
 
-        aggregatedUnderlyingBalances = newBalance;
+        // 3. Check if should pause
+        if (!shouldContinue) {
+            _pause();
+            emit VaultPausedDueToThreshold(lastPricePerShare, newPPS);
+            return;
+        }
+
+        // 4. Update own state
+        emit UnderlyingBalanceUpdated(aggregatedUnderlyingBalances, newAggregatedBalance);
+        aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
         lastBlockUpdated = block.number;
     }
 
     /// @inheritdoc IElitraVault
-    function setOracleAdapter(IOracleAdapter newAdapter) external requiresAuth {
+    function setBalanceUpdateHook(IBalanceUpdateHook newAdapter) external requiresAuth {
         require(address(newAdapter) != address(0), Errors.ZeroAddress());
-        emit OracleAdapterUpdated(address(oracleAdapter), address(newAdapter));
-        oracleAdapter = newAdapter;
+        emit BalanceUpdateHookUpdated(address(balanceUpdateHook), address(newAdapter));
+        balanceUpdateHook = newAdapter;
     }
 
     // ========================================= REDEMPTION INTEGRATION =========================================
@@ -102,7 +118,7 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         uint256 assets = previewRedeem(shares);
 
         // Ask strategy how to handle this redemption
-        (RedemptionMode mode, uint256 actualAssets) = redemptionStrategy.processRedemption(
+        (RedemptionMode mode, uint256 actualAssets) = redemptionHook.beforeRedeem(
             this, shares, assets, owner, receiver
         );
 
@@ -155,10 +171,10 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     }
 
     /// @inheritdoc IElitraVault
-    function setRedemptionStrategy(IRedemptionStrategy newStrategy) external requiresAuth {
+    function setRedemptionHook(IRedemptionHook newStrategy) external requiresAuth {
         require(address(newStrategy) != address(0), Errors.ZeroAddress());
-        emit RedemptionStrategyUpdated(address(redemptionStrategy), address(newStrategy));
-        redemptionStrategy = newStrategy;
+        emit RedemptionHookUpdated(address(redemptionHook), address(newStrategy));
+        redemptionHook = newStrategy;
     }
 
     /// @inheritdoc IElitraVault

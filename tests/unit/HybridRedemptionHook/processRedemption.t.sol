@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { HybridRedemptionStrategy_Base_Test } from "./Base.t.sol";
-import { RedemptionMode } from "../../../src/interfaces/IRedemptionStrategy.sol";
+import { HybridRedemptionHook_Base_Test } from "./Base.t.sol";
+import { RedemptionMode } from "../../../src/interfaces/IRedemptionHook.sol";
 import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
 
-contract ProcessRedemption_Test is HybridRedemptionStrategy_Base_Test {
+contract ProcessRedemption_Test is HybridRedemptionHook_Base_Test {
     function test_ReturnsInstant_WhenSufficientLiquidity() public {
         // Mock vault to return sufficient balance
         vm.mockCall(
@@ -14,7 +14,7 @@ contract ProcessRedemption_Test is HybridRedemptionStrategy_Base_Test {
             abi.encode(1000e6) // 1000 USDC available
         );
 
-        (RedemptionMode mode, uint256 actualAssets) = strategy.processRedemption(
+        (RedemptionMode mode, uint256 actualAssets) = strategy.beforeRedeem(
             IElitraVault(vault),
             100, // shares
             500e6, // 500 USDC needed
@@ -34,7 +34,7 @@ contract ProcessRedemption_Test is HybridRedemptionStrategy_Base_Test {
             abi.encode(100e6) // Only 100 USDC available
         );
 
-        (RedemptionMode mode, uint256 actualAssets) = strategy.processRedemption(
+        (RedemptionMode mode, uint256 actualAssets) = strategy.beforeRedeem(
             IElitraVault(vault),
             100, // shares
             500e6, // 500 USDC needed

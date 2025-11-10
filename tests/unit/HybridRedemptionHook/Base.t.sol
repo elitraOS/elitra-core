@@ -2,15 +2,15 @@
 pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
-import { HybridRedemptionStrategy } from "../../../src/strategies/HybridRedemptionStrategy.sol";
+import { HybridRedemptionHook } from "../../../src/hooks/HybridRedemptionHook.sol";
 import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
 
-contract HybridRedemptionStrategy_Base_Test is Test {
-    HybridRedemptionStrategy public strategy;
+contract HybridRedemptionHook_Base_Test is Test {
+    HybridRedemptionHook public strategy;
     address public vault;
 
     function setUp() public virtual {
-        strategy = new HybridRedemptionStrategy();
+        strategy = new HybridRedemptionHook();
         vault = makeAddr("vault");
     }
 }

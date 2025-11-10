@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import { ElitraVault_Base_Test } from "./Base.t.sol";
-import { Errors } from "../../../src/libraries/Errors.sol";
 
 contract OracleIntegration_Test is ElitraVault_Base_Test {
     address public alice;
@@ -21,7 +20,7 @@ contract OracleIntegration_Test is ElitraVault_Base_Test {
 
         // Initialize lastPricePerShare with 1000e6 aggregated balance (1:1 ratio)
         vm.prank(owner);
-        oracleAdapter.updateVaultBalance(vault, 1000e6);
+        vault.updateBalance(1000e6);
     }
 
     function test_OracleUpdate_UpdatesAggregatedBalance() public {
@@ -29,9 +28,8 @@ contract OracleIntegration_Test is ElitraVault_Base_Test {
 
         // Update with 5 USDC yield (0.5% increase, within 1% threshold)
         vm.prank(owner);
-        bool success = oracleAdapter.updateVaultBalance(vault, 1005e6);
+        vault.updateBalance(1005e6);
 
-        assertTrue(success);
         assertEq(vault.aggregatedUnderlyingBalances(), 1005e6);
         assertEq(vault.totalAssets(), 1005e6); // All assets deployed to strategy
     }
@@ -43,25 +41,28 @@ contract OracleIntegration_Test is ElitraVault_Base_Test {
 
         // Update with 5 USDC yield (0.5% increase, within 1% threshold)
         vm.prank(owner);
-        oracleAdapter.updateVaultBalance(vault, 1005e6);
+        vault.updateBalance(1005e6);
 
         uint256 newPPS = vault.lastPricePerShare();
         assertGt(newPPS, oldPPS); // Price increased due to yield
     }
 
-    function test_OracleUpdate_RejectUpdate_WhenPriceChangeExceedsThreshold() public {
+    function test_OracleUpdate_PausesVault_WhenPriceChangeExceedsThreshold() public {
         vm.roll(block.number + 1); // Move to next block
 
         // Try to update with huge balance increase (>1% threshold)
         vm.prank(owner);
-        bool success = oracleAdapter.updateVaultBalance(vault, 50000e6); // 50x increase
+        vault.updateBalance(50000e6); // 50x increase
 
-        assertFalse(success); // Should reject update
+        assertTrue(vault.paused()); // Vault should be paused
         assertEq(vault.aggregatedUnderlyingBalances(), 1000e6); // Balance should not be updated (remains at previous value)
     }
 
-    function test_SetAggregatedBalance_RevertsWhen_NotOracleAdapter() public {
-        vm.expectRevert(Errors.OnlyOracleAdapter.selector);
-        vault.setAggregatedBalance(1000e6, 1e18);
+    function test_UpdateBalance_RevertsWhen_NotAuthorized() public {
+        vm.roll(block.number + 1);
+
+        vm.expectRevert("UNAUTHORIZED");
+        vm.prank(alice);
+        vault.updateBalance(1000e6);
     }
 }

@@ -2,8 +2,8 @@
 pragma solidity 0.8.28;
 
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
-import { IOracleAdapter } from "./IOracleAdapter.sol";
-import { IRedemptionStrategy } from "./IRedemptionStrategy.sol";
+import { IBalanceUpdateHook } from "./IBalanceUpdateHook.sol";
+import { IRedemptionHook } from "./IRedemptionHook.sol";
 
 /// @title IElitraVault
 /// @notice Interface for ElitraVault with adapter integration
@@ -16,8 +16,9 @@ interface IElitraVault is IERC4626 {
 
     // Events
     event UnderlyingBalanceUpdated(uint256 oldBalance, uint256 newBalance);
-    event OracleAdapterUpdated(address indexed oldAdapter, address indexed newAdapter);
-    event RedemptionStrategyUpdated(address indexed oldStrategy, address indexed newStrategy);
+    event VaultPausedDueToThreshold(uint256 oldPPS, uint256 newPPS);
+    event BalanceUpdateHookUpdated(address indexed oldHook, address indexed newHook);
+    event RedemptionHookUpdated(address indexed oldHook, address indexed newHook);
     event RedeemRequest(
         address indexed receiver,
         address indexed owner,
@@ -28,17 +29,17 @@ interface IElitraVault is IERC4626 {
     event RequestFulfilled(address indexed receiver, uint256 shares, uint256 assets);
     event RequestCancelled(address indexed receiver, uint256 shares, uint256 assets);
 
-    // Oracle integration
-    function setAggregatedBalance(uint256 newBalance, uint256 newPPS) external;
-    function setOracleAdapter(IOracleAdapter adapter) external;
-    function oracleAdapter() external view returns (IOracleAdapter);
+    // Balance update hook integration
+    function updateBalance(uint256 newAggregatedBalance) external;
+    function setBalanceUpdateHook(IBalanceUpdateHook hook) external;
+    function balanceUpdateHook() external view returns (IBalanceUpdateHook);
     function lastBlockUpdated() external view returns (uint256);
     function lastPricePerShare() external view returns (uint256);
     function aggregatedUnderlyingBalances() external view returns (uint256);
 
-    // Redemption integration
-    function setRedemptionStrategy(IRedemptionStrategy strategy) external;
-    function redemptionStrategy() external view returns (IRedemptionStrategy);
+    // Redemption hook integration
+    function setRedemptionHook(IRedemptionHook hook) external;
+    function redemptionHook() external view returns (IRedemptionHook);
     function getAvailableBalance() external view returns (uint256);
     function requestRedeem(uint256 shares, address receiver, address owner) external returns (uint256);
     function fulfillRedeem(address receiver, uint256 shares, uint256 assets) external;

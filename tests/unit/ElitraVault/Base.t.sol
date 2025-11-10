@@ -3,16 +3,16 @@ pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 import { ElitraVault } from "../../../src/ElitraVault.sol";
-import { ManualOracleAdapter } from "../../../src/adapters/ManualOracleAdapter.sol";
-import { HybridRedemptionStrategy } from "../../../src/strategies/HybridRedemptionStrategy.sol";
+import { ManualBalanceUpdateHook } from "../../../src/hooks/ManualBalanceUpdateHook.sol";
+import { HybridRedemptionHook } from "../../../src/hooks/HybridRedemptionHook.sol";
 import { ERC20Mock } from "../../mocks/ERC20Mock.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract ElitraVault_Base_Test is Test {
     ElitraVault public vaultImplementation;
     ElitraVault public vault;
-    ManualOracleAdapter public oracleAdapter;
-    HybridRedemptionStrategy public redemptionStrategy;
+    ManualBalanceUpdateHook public balanceUpdateHook;
+    HybridRedemptionHook public redemptionHook;
     ERC20Mock public asset;
 
     address public owner;
@@ -26,8 +26,8 @@ contract ElitraVault_Base_Test is Test {
         asset = new ERC20Mock();
 
         // Deploy adapters
-        oracleAdapter = new ManualOracleAdapter(owner);
-        redemptionStrategy = new HybridRedemptionStrategy();
+        balanceUpdateHook = new ManualBalanceUpdateHook(owner);
+        redemptionHook = new HybridRedemptionHook();
 
         // Deploy vault implementation
         vaultImplementation = new ElitraVault();
@@ -37,8 +37,8 @@ contract ElitraVault_Base_Test is Test {
             ElitraVault.initialize.selector,
             address(asset),
             owner,
-            address(oracleAdapter),
-            address(redemptionStrategy),
+            address(balanceUpdateHook),
+            address(redemptionHook),
             "Elitra USDC Vault",
             "eUSDC-v2"
         );

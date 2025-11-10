@@ -4,8 +4,8 @@ pragma solidity 0.8.28;
 import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { ElitraVault } from "../src/ElitraVault.sol";
-import { ManualOracleAdapter } from "../src/adapters/ManualOracleAdapter.sol";
-import { HybridRedemptionStrategy } from "../src/strategies/HybridRedemptionStrategy.sol";
+import { ManualBalanceUpdateHook } from "../src/hooks/ManualBalanceUpdateHook.sol";
+import { HybridRedemptionHook } from "../src/hooks/HybridRedemptionHook.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -24,13 +24,13 @@ contract Deploy is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         // 1. Deploy adapters
-        console2.log("Deploying ManualOracleAdapter...");
-        ManualOracleAdapter oracleAdapter = new ManualOracleAdapter(owner);
-        console2.log("ManualOracleAdapter:", address(oracleAdapter));
+        console2.log("Deploying ManualBalanceUpdateHook...");
+        ManualBalanceUpdateHook oracleAdapter = new ManualBalanceUpdateHook(owner);
+        console2.log("ManualBalanceUpdateHook:", address(oracleAdapter));
 
-        console2.log("Deploying HybridRedemptionStrategy...");
-        HybridRedemptionStrategy redemptionStrategy = new HybridRedemptionStrategy();
-        console2.log("HybridRedemptionStrategy:", address(redemptionStrategy));
+        console2.log("Deploying HybridRedemptionHook...");
+        HybridRedemptionHook redemptionStrategy = new HybridRedemptionHook();
+        console2.log("HybridRedemptionHook:", address(redemptionStrategy));
 
         // 2. Deploy vault implementation
         console2.log("Deploying ElitraVault implementation...");
@@ -62,8 +62,8 @@ contract Deploy is Script {
         vm.stopBroadcast();
 
         console2.log("\n=== Deployment Summary ===");
-        console2.log("ManualOracleAdapter:", address(oracleAdapter));
-        console2.log("HybridRedemptionStrategy:", address(redemptionStrategy));
+        console2.log("ManualBalanceUpdateHook:", address(oracleAdapter));
+        console2.log("HybridRedemptionHook:", address(redemptionStrategy));
         console2.log("ElitraVault implementation:", address(implementation));
         console2.log("ElitraVault proxy:", address(proxy));
     }

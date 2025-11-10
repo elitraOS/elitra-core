@@ -29,7 +29,7 @@ contract CancelRedeem_Test is ElitraVault_Base_Test {
 
         // Update oracle to reflect deployed balance
         vm.prank(owner);
-        oracleAdapter.updateVaultBalance(vault, 2000e6);
+        vault.updateBalance( 2000e6);
 
         vm.roll(block.number + 1);
         vm.prank(alice);

@@ -40,7 +40,7 @@ contract RequestRedeem_Test is ElitraVault_Base_Test {
         // Now vault only has 200 USDC idle (2000 total - 1800 deployed)
         // Update oracle to reflect this (aggregatedBalance = 1800)
         vm.prank(owner);
-        oracleAdapter.updateVaultBalance(vault, 1800e6);
+        vault.updateBalance( 1800e6);
 
         // Alice wants to redeem 500 shares
         // With 2000 totalAssets and 2000 shares, 500 shares = 500 assets

@@ -3,15 +3,15 @@ pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 import { ElitraVault } from "../../src/ElitraVault.sol";
-import { ManualOracleAdapter } from "../../src/adapters/ManualOracleAdapter.sol";
-import { HybridRedemptionStrategy } from "../../src/strategies/HybridRedemptionStrategy.sol";
+import { ManualBalanceUpdateHook } from "../../src/hooks/ManualBalanceUpdateHook.sol";
+import { HybridRedemptionHook } from "../../src/hooks/HybridRedemptionHook.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract VaultIntegration_Test is Test {
     ElitraVault public vault;
-    ManualOracleAdapter public oracleAdapter;
-    HybridRedemptionStrategy public redemptionStrategy;
+    ManualBalanceUpdateHook public balanceUpdateHook;
+    HybridRedemptionHook public redemptionHook;
     ERC20Mock public usdc;
 
     address public owner;
@@ -29,8 +29,8 @@ contract VaultIntegration_Test is Test {
         usdc = new ERC20Mock();
 
         // Deploy adapters
-        oracleAdapter = new ManualOracleAdapter(owner);
-        redemptionStrategy = new HybridRedemptionStrategy();
+        balanceUpdateHook = new ManualBalanceUpdateHook(owner);
+        redemptionHook = new HybridRedemptionHook();
 
         // Deploy vault
         ElitraVault implementation = new ElitraVault();
@@ -38,8 +38,8 @@ contract VaultIntegration_Test is Test {
             ElitraVault.initialize.selector,
             address(usdc),
             owner,
-            address(oracleAdapter),
-            address(redemptionStrategy),
+            address(balanceUpdateHook),
+            address(redemptionHook),
             "Elitra USDC Vault",
             "eUSDC-v2"
         );
@@ -82,11 +82,11 @@ contract VaultIntegration_Test is Test {
 
         // 3. Oracle reports strategy balance + yield
         vm.prank(owner);
-        oracleAdapter.updateVaultBalance(vault, 7000e6); // Initialize PPS
+        vault.updateBalance(7000e6); // Initialize PPS
 
         vm.roll(block.number + 1);
         vm.prank(owner);
-        oracleAdapter.updateVaultBalance(vault, 7050e6); // 50 USDC yield (~0.7% increase)
+        vault.updateBalance(7050e6); // 50 USDC yield (~0.7% increase)
 
         assertEq(vault.totalAssets(), 8050e6); // 1000 idle + 7050 strategy
         assertGt(vault.lastPricePerShare(), 1e18); // Price increased

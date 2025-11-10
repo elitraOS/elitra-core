@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { IRedemptionStrategy, RedemptionMode } from "../interfaces/IRedemptionStrategy.sol";
+import { IRedemptionHook, RedemptionMode } from "../interfaces/IRedemptionHook.sol";
 import { IElitraVault } from "../interfaces/IElitraVault.sol";
 
-/// @title HybridRedemptionStrategy
-/// @notice Redemption strategy: instant if liquidity available, else queue
-contract HybridRedemptionStrategy is IRedemptionStrategy {
+/// @title HybridRedemptionHook
+/// @notice Redemption hook: instant if liquidity available, else queue
+contract HybridRedemptionHook is IRedemptionHook {
     event RedemptionProcessed(
         address indexed vault,
         address indexed receiver,
@@ -14,12 +14,12 @@ contract HybridRedemptionStrategy is IRedemptionStrategy {
         uint256 assets
     );
 
-    /// @inheritdoc IRedemptionStrategy
-    function processRedemption(
+    /// @inheritdoc IRedemptionHook
+    function beforeRedeem(
         IElitraVault vault,
-        uint256 shares,
+        uint256, /* shares */
         uint256 assets,
-        address owner,
+        address, /* owner */
         address receiver
     ) external returns (RedemptionMode mode, uint256 actualAssets) {
         uint256 availableBalance = vault.getAvailableBalance();
@@ -31,5 +31,16 @@ contract HybridRedemptionStrategy is IRedemptionStrategy {
             emit RedemptionProcessed(address(vault), receiver, RedemptionMode.QUEUED, assets);
             return (RedemptionMode.QUEUED, assets);
         }
+    }
+
+    /// @inheritdoc IRedemptionHook
+    function afterRedeem(
+        address, /* receiver */
+        uint256, /* shares */
+        uint256, /* assets */
+        bool /* instant */
+    ) external {
+        // Empty for now - reserved for future extensibility
+        // Could be used for: analytics, notifications, rewards distribution, etc.
     }
 }
