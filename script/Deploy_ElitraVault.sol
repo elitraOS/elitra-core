@@ -29,8 +29,8 @@ contract Deploy is Script {
         console2.log("ManualBalanceUpdateHook:", address(oracleAdapter));
 
         console2.log("Deploying HybridRedemptionHook...");
-        HybridRedemptionHook redemptionStrategy = new HybridRedemptionHook();
-        console2.log("HybridRedemptionHook:", address(redemptionStrategy));
+        HybridRedemptionHook redemptionHook = new HybridRedemptionHook();
+        console2.log("HybridRedemptionHook:", address(redemptionHook));
 
         // 2. Deploy vault implementation
         console2.log("Deploying ElitraVault implementation...");
@@ -46,7 +46,7 @@ contract Deploy is Script {
             asset,
             owner,
             address(oracleAdapter),
-            address(redemptionStrategy),
+            address(redemptionHook),
             name,
             symbol
         );
@@ -63,7 +63,7 @@ contract Deploy is Script {
 
         console2.log("\n=== Deployment Summary ===");
         console2.log("ManualBalanceUpdateHook:", address(oracleAdapter));
-        console2.log("HybridRedemptionHook:", address(redemptionStrategy));
+        console2.log("HybridRedemptionHook:", address(redemptionHook));
         console2.log("ElitraVault implementation:", address(implementation));
         console2.log("ElitraVault proxy:", address(proxy));
     }

@@ -1,0 +1,3 @@
+# ABI files are generated from the main contract build
+# Run: forge build
+# Then extract: cat out/ElitraVault.sol/ElitraVault.json | jq -r '.abi' > pkg/sdk/src/abis/ElitraVault.json
