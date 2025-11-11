@@ -40,6 +40,7 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
     uint256 public totalPendingAssets;
 
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -85,15 +86,17 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         // 3. Check if should pause
         if (!shouldContinue) {
             _pause();
-            emit VaultPausedDueToThreshold(lastPricePerShare, newPPS);
+            emit VaultPausedDueToThreshold(block.timestamp, lastPricePerShare, newPPS);
             return;
         }
 
         // 4. Update own state
-        emit UnderlyingBalanceUpdated(aggregatedUnderlyingBalances, newAggregatedBalance);
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
         lastBlockUpdated = block.number;
+
+        emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
+        emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
     }
 
     /// @inheritdoc IElitraVault
@@ -210,6 +213,7 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
         return IERC20(asset()).balanceOf(address(this)) + aggregatedUnderlyingBalances;
     }
+
 
     function deposit(uint256 assets, address receiver)
         public

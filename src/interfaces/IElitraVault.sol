@@ -15,8 +15,9 @@ interface IElitraVault is IERC4626 {
     }
 
     // Events
-    event UnderlyingBalanceUpdated(uint256 oldBalance, uint256 newBalance);
-    event VaultPausedDueToThreshold(uint256 oldPPS, uint256 newPPS);
+    event UnderlyingBalanceUpdated(uint256 indexed timestamp, uint256 oldBalance, uint256 newBalance);
+    event PPSUpdated(uint256 indexed timestamp, uint256 oldPPS, uint256 newPPS);
+    event VaultPausedDueToThreshold(uint256 indexed timestamp, uint256 oldPPS, uint256 newPPS);
     event BalanceUpdateHookUpdated(address indexed oldHook, address indexed newHook);
     event RedemptionHookUpdated(address indexed oldHook, address indexed newHook);
     event RedeemRequest(
