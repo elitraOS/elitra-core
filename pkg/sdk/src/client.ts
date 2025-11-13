@@ -3,8 +3,6 @@ import {
   type Hash,
   type PublicClient,
   type WalletClient,
-  encodeFunctionData,
-  parseAbi,
   parseEventLogs,
 } from 'viem';
 import type {
@@ -314,6 +312,7 @@ export class ElitraClient {
       functionName: 'deposit',
       args: [assets, receiver],
       account,
+      chain: this.walletClient.chain,
     });
 
     return {
@@ -347,6 +346,7 @@ export class ElitraClient {
       functionName: 'mint',
       args: [shares, receiver],
       account,
+      chain: this.walletClient.chain,
     });
 
     return {
@@ -381,6 +381,7 @@ export class ElitraClient {
       functionName: 'requestRedeem',
       args: [shares, receiver, owner],
       account,
+      chain: this.walletClient.chain,
     });
 
     // Wait for transaction to get the event
@@ -395,8 +396,8 @@ export class ElitraClient {
 
     if (logs.length > 0) {
       const event = logs[0];
-      const isInstant = event.args.instant as boolean;
-      const assets = event.args.assets as bigint;
+      const isInstant = (event as any).args.instant as boolean;
+      const assets = (event as any).args.assets as bigint;
 
       return {
         hash,
@@ -441,6 +442,7 @@ export class ElitraClient {
       args: [target, data, value],
       account,
       gas: options.gasLimit,
+      chain: this.walletClient.chain,
     });
 
     return {
@@ -480,6 +482,7 @@ export class ElitraClient {
       args: [targets, data, values],
       account,
       gas: options.gasLimit,
+      chain: this.walletClient.chain,
     });
 
     return {
@@ -510,6 +513,7 @@ export class ElitraClient {
       functionName: 'updateBalance',
       args: [newAggregatedBalance],
       account,
+      chain: this.walletClient.chain,
     });
 
     return hash;
@@ -533,6 +537,7 @@ export class ElitraClient {
       abi: ElitraVaultAbi,
       functionName: 'pause',
       account,
+      chain: this.walletClient.chain,
     });
 
     return hash;
@@ -556,6 +561,7 @@ export class ElitraClient {
       abi: ElitraVaultAbi,
       functionName: 'unpause',
       account,
+      chain: this.walletClient.chain,
     });
 
     return hash;
