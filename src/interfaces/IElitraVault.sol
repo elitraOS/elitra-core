@@ -29,6 +29,13 @@ interface IElitraVault is IERC4626 {
     );
     event RequestFulfilled(address indexed receiver, uint256 shares, uint256 assets);
     event RequestCancelled(address indexed receiver, uint256 shares, uint256 assets);
+    event ManageBatchOperation(
+        uint256 indexed index,
+        address indexed target,
+        bytes4 functionSig,
+        uint256 value,
+        bytes result
+    );
 
     // Balance update hook integration
     function updateBalance(uint256 newAggregatedBalance) external;
@@ -49,6 +56,7 @@ interface IElitraVault is IERC4626 {
 
     // Strategy management
     function manage(address target, bytes calldata data, uint256 value) external returns (bytes memory);
+    function manageBatch(address[] calldata targets, bytes[] calldata data, uint256[] calldata values) external;
 
     // Emergency controls
     function pause() external;

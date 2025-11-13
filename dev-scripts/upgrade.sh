@@ -21,16 +21,7 @@ else
     echo "Warning: Authority config not found at $AUTHORITY_CONFIG"
 fi
 
-# Source asset-specific config
-ASSET_CONFIG="config/sei/${ASSET}.sh"
-if [ ! -f "$ASSET_CONFIG" ]; then
-    echo "Error: Asset config file not found: $ASSET_CONFIG"
-    echo "Available assets: wsei, usdc"
-    exit 1
-fi
 
-# Load asset config to get vault addresses
-source "$ASSET_CONFIG"
 
 echo "================================================================"
 echo "Upgrading Elitra Vault for asset: $ASSET"

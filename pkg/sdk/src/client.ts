@@ -12,12 +12,14 @@ import type {
   DepositResult,
   RedeemResult,
   ManageResult,
+  ManageBatchResult,
   VaultState,
   UserPosition,
   DepositOptions,
   MintOptions,
   RedeemOptions,
   ManageOptions,
+  ManageBatchOptions,
   PendingRedeem,
 } from './types';
 import ElitraVaultAbi from './abis/ElitraVault.json';
@@ -444,6 +446,44 @@ export class ElitraClient {
     return {
       hash,
       data,
+    };
+  }
+
+  /**
+   * Call the manageBatch function to execute multiple arbitrary calls sequentially from the vault
+   *
+   * @param targets - Array of target contract addresses
+   * @param data - Array of encoded function call data
+   * @param values - Array of ETH values to send with each call
+   * @param options - ManageBatch options
+   * @returns Transaction hash
+   */
+  async manageBatch(
+    targets: Address[],
+    data: `0x${string}`[],
+    values: bigint[],
+    options: ManageBatchOptions = {}
+  ): Promise<ManageBatchResult> {
+    if (!this.walletClient) {
+      throw new Error('WalletClient is required for write operations');
+    }
+
+    const account = this.walletClient.account;
+    if (!account) {
+      throw new Error('WalletClient must have an account');
+    }
+
+    const hash = await this.walletClient.writeContract({
+      address: this.vaultAddress,
+      abi: ElitraVaultAbi,
+      functionName: 'manageBatch',
+      args: [targets, data, values],
+      account,
+      gas: options.gasLimit,
+    });
+
+    return {
+      hash,
     };
   }
 

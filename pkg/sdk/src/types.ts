@@ -135,3 +135,19 @@ export interface ManageOptions {
   /** Gas limit for the transaction */
   gasLimit?: bigint;
 }
+
+/**
+ * Options for manageBatch operations
+ */
+export interface ManageBatchOptions {
+  /** Gas limit for the transaction */
+  gasLimit?: bigint;
+}
+
+/**
+ * Result of a manageBatch operation
+ */
+export interface ManageBatchResult {
+  /** Transaction hash */
+  hash: Hash;
+}

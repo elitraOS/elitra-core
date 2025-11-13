@@ -208,6 +208,25 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         result = target.functionCallWithValue(data, value);
     }
 
+    /// @inheritdoc IElitraVault
+    function manageBatch(address[] calldata targets, bytes[] calldata data, uint256[] calldata values)
+        external
+        requiresAuth
+    {
+        require(targets.length == data.length && data.length == values.length, "Array length mismatch");
+
+        for (uint256 i = 0; i < targets.length; i++) {
+            bytes4 functionSig = bytes4(data[i]);
+            require(
+                authority().canCall(msg.sender, targets[i], functionSig),
+                Errors.TargetMethodNotAuthorized(targets[i], functionSig)
+            );
+
+            bytes memory result = targets[i].functionCallWithValue(data[i], values[i]);
+            emit ManageBatchOperation(i, targets[i], functionSig, values[i], result);
+        }
+    }
+
     // ========================================= ERC4626 OVERRIDES =========================================
 
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
