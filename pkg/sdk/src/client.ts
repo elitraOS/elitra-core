@@ -567,6 +567,37 @@ export class ElitraClient {
     return hash;
   }
 
+  
+    /**
+     * Fulfill a pending redemption request
+     * 
+     * @param receiver - Address to receive the assets
+     * @param shares - Amount of shares to fulfill
+     * @param assets - Amount of assets to redeem
+     * @returns Transaction hash
+     */
+    async fulfillRedeem(receiver: Address, shares: bigint, assets: bigint): Promise<Hash> {
+      if (!this.walletClient) {
+        throw new Error('WalletClient is required for write operations');
+      }
+
+      const account = this.walletClient.account;
+      if (!account) {
+        throw new Error('WalletClient must have an account');
+      }
+
+      const hash = await this.walletClient.writeContract({
+        chain: this.publicClient.chain,
+        address: this.vaultAddress,
+        abi: ElitraVaultAbi,
+        functionName: 'fulfillRedeem',
+        args: [receiver, shares, assets],
+        account,
+      });
+
+      return hash;
+    }
+
   // ========================================= UTILITY METHODS =========================================
 
   /**
