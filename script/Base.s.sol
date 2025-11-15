@@ -35,7 +35,6 @@ abstract contract BaseScript is Script {
     /// - If $MNEMONIC is not defined, default to a test mnemonic.
     constructor() {
         uint256 deployerPrivateKey = uint256(vm.envOr({ name: "PRIVATE_KEY", defaultValue: bytes32(0) }));
-        console.log("deployerPrivateKey", deployerPrivateKey);
         if (deployerPrivateKey != 0) {
             broadcaster = vm.rememberKey(deployerPrivateKey);
         } else {

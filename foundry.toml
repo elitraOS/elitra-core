@@ -7,6 +7,7 @@ fuzz = { runs = 1_000 }
 gas_reports = ["*"]
 optimizer = true
 optimizer_runs = 1000
+via_ir = true
 out = "out"
 script = "script"
 solc = "0.8.28"
@@ -16,6 +17,11 @@ ffi = true
 ast = true
 build_info = true
 extra_output = ["storageLayout"]
+remappings = [
+    "@layerzerolabs/lz-evm-protocol-v2/=lib/LayerZero-v2/packages/layerzero-v2/evm/protocol/",
+    "@layerzerolabs/oapp-evm/=lib/LayerZero-v2/packages/layerzero-v2/evm/oapp/",
+    "@layerzerolabs/oapp-evm-upgradeable/=lib/devtools/packages/oapp-evm-upgradeable/"
+]
 
 [profile.ci]
 fuzz = { runs = 10_000 }
