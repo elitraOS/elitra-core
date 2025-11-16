@@ -38,8 +38,8 @@ contract Deploy is Script {
         console2.log("ElitraVault implementation:", address(implementation));
 
         // 3. Deploy proxy
-        string memory name = "Elitra USDC Vault";
-        string memory symbol = "eUSDC";
+        string memory name = vm.envString("NAME");
+        string memory symbol = vm.envString("SYMBOL");
 
         bytes memory initData = abi.encodeWithSelector(
             ElitraVault.initialize.selector,
