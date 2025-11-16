@@ -98,8 +98,11 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
         console.log("Zap calls count:", zapCalls.length);
         console.logBytes(composeMsg);
 
+        // Build execution options with gas for lzReceive and lzCompose
+        bytes memory options = _buildOptions();
+
         // Build SendParam for LayerZero OFT
-        SendParam memory sendParam = _buildSendParam(dstEid, adapterAddress, amount, composeMsg);
+        SendParam memory sendParam = _buildSendParam(dstEid, adapterAddress, amount, composeMsg, options);
 
         // Quote the messaging fee
         (uint256 nativeFee, uint256 lzTokenFee) = _quoteSend(seiOft, sendParam);
@@ -125,9 +128,45 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
     }
 
     /**
+     * @notice Build execution options for LayerZero
+     * @dev Format: TYPE_3 | WORKER_ID | option_length | option_type | encoded_option
+     */
+    function _buildOptions() internal pure returns (bytes memory) {
+        // Worker ID = 1 (Executor)
+        // Option Type 1 = lzReceive gas
+        // Option Type 3 = lzCompose gas
+
+        // lzReceive option: gas limit for receiving the OFT on destination
+        bytes memory lzReceiveOption = abi.encodePacked(
+            uint128(200000), // gas limit
+            uint128(0)       // msg.value
+        );
+
+        // lzCompose option: gas limit for executing compose message (our zap + deposit)
+        bytes memory lzComposeOption = abi.encodePacked(
+            uint16(0),        // index (0 for first compose)
+            uint128(1200000), // gas limit (need more for zap + deposit)
+            uint128(0)        // msg.value
+        );
+
+        // Combine options into Type 3 format
+        return abi.encodePacked(
+            uint16(3),  // Type 3 (addExecutorLzReceiveOption + addExecutorLzComposeOption)
+            uint8(1),   // Worker ID (Executor)
+            uint16(lzReceiveOption.length + 1),  // Option length + 1 byte for option type
+            uint8(1),   // Option type: lzReceive
+            lzReceiveOption,
+            uint8(1),   // Worker ID (Executor)
+            uint16(lzComposeOption.length + 1),  // Option length + 1 byte for option type
+            uint8(3),   // Option type: lzCompose
+            lzComposeOption
+        );
+    }
+
+    /**
      * @notice Build LayerZero SendParam struct
      */
-    function _buildSendParam(uint32 dstEid, address to, uint256 amount, bytes memory composeMsg)
+    function _buildSendParam(uint32 dstEid, address to, uint256 amount, bytes memory composeMsg, bytes memory options)
         internal
         pure
         returns (SendParam memory)
@@ -137,7 +176,7 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
         // - to: recipient address (adapter) as bytes32
         // - amountLD: amount in local decimals
         // - minAmountLD: minimum amount (slippage protection)
-        // - extraOptions: additional options
+        // - extraOptions: execution options for gas
         // - composeMsg: our custom compose message
         // - oftCmd: OFT command (empty for standard send)
 
@@ -148,7 +187,7 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
             to: toBytes32,
             amountLD: amount,
             minAmountLD: (amount * 9900) / 10000, // 1% slippage
-            extraOptions: "",
+            extraOptions: options,
             composeMsg: composeMsg,
             oftCmd: ""
         });

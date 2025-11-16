@@ -6,7 +6,7 @@ import { console2 } from "forge-std/console2.sol";
 import { RolesAuthority } from "@solmate/auth/authorities/RolesAuthority.sol";
 import { Authority } from "@solmate/auth/Auth.sol";
 import { ElitraVault } from "src/ElitraVault.sol";
-
+import { ManualBalanceUpdateHook } from "src/hooks/ManualBalanceUpdateHook.sol";
 /**
  * @title SetupRoles
  * @notice Configures roles and permissions for Elitra Vault
@@ -25,6 +25,7 @@ contract SetupRoles is Script {
         // Get addresses from environment
         address vaultAddress = vm.envAddress("VAULT_ADDRESS");
         address rolesAuthorityAddress = vm.envAddress("ROLES_AUTHORITY_ADDRESS");
+        address oracleHookAddress = vm.envAddress("ORACLE_HOOK_ADDRESS");
 
         console2.log("=== Setup Roles Configuration ===");
         console2.log("Deployer:", deployer);
@@ -35,11 +36,25 @@ contract SetupRoles is Script {
 
         ElitraVault vault = ElitraVault(payable(vaultAddress));
         RolesAuthority authority = RolesAuthority(rolesAuthorityAddress);
+        ManualBalanceUpdateHook oracleHook = ManualBalanceUpdateHook(oracleHookAddress);
 
         // Set the vault's authority to the RolesAuthority
         console2.log("\n1. Setting vault authority...");
         vault.setAuthority(Authority(rolesAuthorityAddress));
         console2.log("   Vault authority set to:", rolesAuthorityAddress);
+
+        console2.log("\n2. Setting oracle hook authority...");
+        oracleHook.setAuthority(Authority(rolesAuthorityAddress));
+        console2.log("   Oracle hook authority set to:", rolesAuthorityAddress);
+
+        // allow broadcast address, to call the updateMaxPercentageChange function
+        authority.setUserRole(deployer, ORACLE_ROLE, true);
+        console2.log("   Deployer assigned ORACLE_ROLE");
+
+        // allow calling the updateMaxPercentageChange function
+        authority.setRoleCapability(ORACLE_ROLE, oracleHookAddress, ManualBalanceUpdateHook.updateMaxPercentageChange.selector, true);
+        console2.log("   Oracle hook can call updateMaxPercentageChange()");
+
 
         // Give deployer the MANAGER_ROLE
         console2.log("\n2. Assigning MANAGER_ROLE to deployer...");
