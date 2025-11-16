@@ -41,6 +41,9 @@ contract Deploy is Script {
         string memory name = vm.envString("NAME");
         string memory symbol = vm.envString("SYMBOL");
 
+        console2.log("Name:", name);
+        console2.log("Symbol:", symbol);
+
         bytes memory initData = abi.encodeWithSelector(
             ElitraVault.initialize.selector,
             asset,
