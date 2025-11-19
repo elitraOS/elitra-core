@@ -15,7 +15,7 @@
   "scripts": {
     "check-types": "tsc --noEmit",
     "build:js": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm",
-    "build": "npm run check-types && tsc --emitDeclarationOnly && npm run build:js",
+    "build": "bun run check-types && tsc --emitDeclarationOnly && bun run build:js",
     "dev": "tsx watch src/index.ts",
     "lint": "eslint ."
   },

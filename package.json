@@ -1,11 +1,31 @@
 {
-  "name": "@kraikov/yo-core",
-  "description": "",
-  "version": "1.0.0",
-  "author": {
-    "name": "kraikov",
-    "url": "https://github.com/kraikov"
+  "name": "@elitra/core",
+  "version": "0.1.0",
+  "main": "./pkg/sdk/dist/index.js",
+  "module": "./pkg/sdk/dist/index.js",
+  "types": "./pkg/sdk/dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./pkg/sdk/dist/index.d.ts",
+      "import": "./pkg/sdk/dist/index.js",
+      "require": "./pkg/sdk/dist/index.js",
+      "default": "./pkg/sdk/dist/index.js"
+    }
   },
+  "private": true,
+  "author": "Elitra",
+  "license": "MIT",
+  "keywords": [
+    "elitra",
+    "vault",
+    "defi",
+    "erc4626",
+    "viem",
+    "typescript"
+  ],
+  "workspaces": [
+    "pkg/sdk"
+  ],
   "dependencies": {
     "@openzeppelin/contracts": "5.2.0",
     "@openzeppelin/contracts-upgradeable": "5.2.0",
@@ -14,23 +34,19 @@
   "devDependencies": {
     "forge-std": "github:foundry-rs/forge-std#v1.9.5",
     "prettier": "^3.0.0",
-    "solhint": "^3.6.2"
+    "solhint": "^3.6.2",
+    "viem": "^2.0.0"
   },
-  "keywords": [
-    "blockchain",
-    "ethereum",
-    "forge",
-    "foundry",
-    "smart-contracts",
-    "solidity",
-    "template"
-  ],
-  "private": true,
   "scripts": {
     "clean": "rm -rf cache out",
-    "build": "forge build",
+    "build": "bun run build:contracts && bun run build:sdk",
+    "build:contracts": "forge build",
+    "build:sdk": "cd pkg/sdk && bun run build",
+    "check-types": "cd pkg/sdk && bun run check-types",
+    "dev": "cd pkg/sdk && bun run dev",
     "lint": "bun run lint:sol && bun run prettier:check",
     "lint:sol": "forge fmt --check && bun solhint \"{src,tests}/**/*.sol\"",
+    "lint:sdk": "cd pkg/sdk && bun run lint",
     "prettier:check": "prettier --check \"**/*.{json,md,yml}\" --ignore-path \".prettierignore\"",
     "prettier:write": "prettier --write \"**/*.{json,md,yml}\" --ignore-path \".prettierignore\"",
     "test": "forge test",
