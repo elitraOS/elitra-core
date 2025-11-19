@@ -13,9 +13,11 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
-    "typecheck": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "build:js": "esbuild src/index.ts --bundle --outfile=dist/index.js --platform=node --format=esm",
+    "build": "npm run check-types && tsc --emitDeclarationOnly && npm run build:js",
+    "dev": "tsx watch src/index.ts",
+    "lint": "eslint ."
   },
   "keywords": [
     "elitra",
@@ -32,7 +34,8 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "tsup": "^8.0.0",
+    "esbuild": "^0.27.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.0.0",
     "viem": "^2.0.0"
   }
