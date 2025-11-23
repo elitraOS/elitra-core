@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { Errors } from "../libraries/Errors.sol";
 import { Call } from "../interfaces/IElitraVault.sol";
+import { ICallValidator } from "../interfaces/ICallValidator.sol";
 import { Compatible } from "./Compatible.sol";
 import { AuthUpgradeable, Authority } from "./AuthUpgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
@@ -13,6 +14,14 @@ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 /// @notice Base contract for Vaults and SubVaults providing auth, pause, and management features
 abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible {
     using Address for address;
+
+    /// @notice Mapping of target contracts to their validators
+    mapping(address target => ICallValidator validator) public validators;
+
+    /// @notice Emitted when a validator is updated
+    /// @param target The target contract address
+    /// @param validator The validator contract address
+    event ValidatorUpdated(address indexed target, address indexed validator);
 
     /// @notice Emitted when a batch of calls is executed
     /// @param index The index of the call in the batch
@@ -50,6 +59,14 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
         _unpause();
     }
 
+    /// @notice Sets the validator for a specific target
+    /// @param target The target contract address
+    /// @param validator The validator contract address
+    function setValidator(address target, address validator) external virtual requiresAuth {
+        validators[target] = ICallValidator(validator);
+        emit ValidatorUpdated(target, validator);
+    }
+
     /// @notice Execute a call to a target contract
     /// @param target The address of the target contract
     /// @param data The calldata to execute
@@ -61,10 +78,12 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
         requiresAuth
         returns (bytes memory result)
     {
-        bytes4 functionSig = bytes4(data);
+        ICallValidator validator = validators[target];
+        require(address(validator) != address(0), Errors.TransactionValidationFailed(target));
+        
         require(
-            authority().canCall(msg.sender, target, functionSig),
-            Errors.TargetMethodNotAuthorized(target, functionSig)
+            validator.validate(msg.sender, data, value),
+            Errors.TransactionValidationFailed(target)
         );
 
         result = target.functionCallWithValue(data, value);
@@ -79,14 +98,17 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
     {
         require(calls.length > 0, "No calls provided");
 
-        for (uint256 i = 0; i < calls.length; i++) {
-            bytes4 functionSig = bytes4(calls[i].data);
+        for (uint256 i = 0; i < calls.length; ++i) {
+            ICallValidator validator = validators[calls[i].target];
+            require(address(validator) != address(0), Errors.TransactionValidationFailed(calls[i].target));
+
             require(
-                authority().canCall(msg.sender, calls[i].target, functionSig),
-                Errors.TargetMethodNotAuthorized(calls[i].target, functionSig)
+                validator.validate(msg.sender, calls[i].data, calls[i].value),
+                Errors.TransactionValidationFailed(calls[i].target)
             );
 
             bytes memory result = calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
+            bytes4 functionSig = bytes4(calls[i].data);
             emit ManageBatchOperation(i, calls[i].target, functionSig, calls[i].value, result);
         }
     }
