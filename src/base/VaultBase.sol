@@ -41,12 +41,12 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
     }
 
     /// @notice Pause the vault
-    function pause() public requiresAuth {
+    function pause() public virtual requiresAuth {
         _pause();
     }
 
     /// @notice Unpause the vault
-    function unpause() public requiresAuth {
+    function unpause() public virtual requiresAuth {
         _unpause();
     }
 
@@ -57,6 +57,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
     /// @return result The return data of the call
     function manage(address target, bytes calldata data, uint256 value)
         external
+        virtual
         requiresAuth
         returns (bytes memory result)
     {
@@ -73,6 +74,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
     /// @param calls The array of calls to execute
     function manageBatch(Call[] calldata calls)
         external
+        virtual
         requiresAuth
     {
         require(calls.length > 0, "No calls provided");

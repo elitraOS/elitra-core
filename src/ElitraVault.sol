@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
-import { IElitraVault } from "./interfaces/IElitraVault.sol";
+import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
@@ -253,5 +253,53 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     function maxRedeem(address owner) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
         if (paused()) return 0;
         return super.maxRedeem(owner);
+    }
+
+    // ========================================= VAULTBASE & INTERFACE COMPATIBILITY =========================================
+
+    /// @inheritdoc IElitraVault
+    function manage(address target, bytes calldata data, uint256 value)
+        external
+        override(VaultBase, IElitraVault)
+        requiresAuth
+        returns (bytes memory result)
+    {
+        bytes4 functionSig = bytes4(data);
+        require(
+            authority().canCall(msg.sender, target, functionSig),
+            Errors.TargetMethodNotAuthorized(target, functionSig)
+        );
+
+        result = target.functionCallWithValue(data, value);
+    }
+
+    /// @inheritdoc IElitraVault
+    function manageBatch(Call[] calldata calls)
+        external
+        override(VaultBase, IElitraVault)
+        requiresAuth
+    {
+        require(calls.length > 0, "No calls provided");
+
+        for (uint256 i = 0; i < calls.length; i++) {
+            bytes4 functionSig = bytes4(calls[i].data);
+            require(
+                authority().canCall(msg.sender, calls[i].target, functionSig),
+                Errors.TargetMethodNotAuthorized(calls[i].target, functionSig)
+            );
+
+            bytes memory result = calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
+            emit ManageBatchOperation(i, calls[i].target, functionSig, calls[i].value, result);
+        }
+    }
+
+    /// @inheritdoc IElitraVault
+    function pause() public override(VaultBase, IElitraVault) requiresAuth {
+        _pause();
+    }
+
+    /// @inheritdoc IElitraVault
+    function unpause() public override(VaultBase, IElitraVault) requiresAuth {
+        _unpause();
     }
 }

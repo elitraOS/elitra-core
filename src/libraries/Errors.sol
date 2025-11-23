@@ -42,4 +42,7 @@ library Errors {
 
     /// @notice Thrown when a user is not authorized to perform an operation
     error Unauthorized();
+
+    /// @notice Thrown when the transaction validation fails for a target
+    error TransactionValidationFailed(address target);
 }

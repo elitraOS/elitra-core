@@ -36,13 +36,6 @@ interface IElitraVault is IERC4626 {
     );
     event RequestFulfilled(address indexed receiver, uint256 shares, uint256 assets);
     event RequestCancelled(address indexed receiver, uint256 shares, uint256 assets);
-    event ManageBatchOperation(
-        uint256 indexed index,
-        address indexed target,
-        bytes4 functionSig,
-        uint256 value,
-        bytes result
-    );
 
     // Balance update hook integration
     function updateBalance(uint256 newAggregatedBalance) external;

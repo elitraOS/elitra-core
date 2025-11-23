@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { ElitraVault_Base_Test } from "./Base.t.sol";
 import { IElitraVault, Call } from "../../../src/interfaces/IElitraVault.sol";
+import { VaultBase } from "../../../src/base/VaultBase.sol";
 import { MockAuthority } from "../../mocks/MockAuthority.sol";
 import { Authority } from "@solmate/auth/Auth.sol";
 
@@ -101,7 +102,7 @@ contract ManageBatch_Test is ElitraVault_Base_Test {
 
         // Expect events to be emitted
         vm.expectEmit(true, true, false, true);
-        emit IElitraVault.ManageBatchOperation(
+        emit VaultBase.ManageBatchOperation(
             0,
             address(target1),
             MockTarget.increment.selector,
@@ -110,7 +111,7 @@ contract ManageBatch_Test is ElitraVault_Base_Test {
         );
 
         vm.expectEmit(true, true, false, true);
-        emit IElitraVault.ManageBatchOperation(
+        emit VaultBase.ManageBatchOperation(
             1,
             address(target2),
             MockTarget.increment.selector,
