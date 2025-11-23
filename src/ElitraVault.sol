@@ -2,12 +2,11 @@
 pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
-import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
+import { IElitraVault } from "./interfaces/IElitraVault.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
-import { Compatible } from "./base/Compatible.sol";
-import { AuthUpgradeable, Authority } from "./base/AuthUpgradeable.sol";
+import { VaultBase } from "./base/VaultBase.sol";
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
@@ -15,11 +14,10 @@ import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
-import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 
 /// @title ElitraVault - Vault with pluggable oracle and redemption adapters
 /// @notice ERC-4626 vault that delegates validation logic to adapters
-contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgradeable, PausableUpgradeable {
+contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     using Math for uint256;
     using Address for address;
     using SafeERC20 for IERC20;
@@ -58,8 +56,7 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         __Context_init();
         __ERC20_init(_name, _symbol);
         __ERC4626_init(_asset);
-        __Auth_init(_owner, Authority(address(0)));
-        __Pausable_init();
+        __VaultBase_init(_owner);
 
         require(address(_balanceUpdateHook) != address(0), Errors.ZeroAddress());
         require(address(_redemptionHook) != address(0), Errors.ZeroAddress());
@@ -191,42 +188,6 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
         return (_pendingRedeem[user].assets, _pendingRedeem[user].shares);
     }
 
-    // ========================================= STRATEGY MANAGEMENT =========================================
-
-    /// @inheritdoc IElitraVault
-    function manage(address target, bytes calldata data, uint256 value)
-        external
-        requiresAuth
-        returns (bytes memory result)
-    {
-        bytes4 functionSig = bytes4(data);
-        require(
-            authority().canCall(msg.sender, target, functionSig),
-            Errors.TargetMethodNotAuthorized(target, functionSig)
-        );
-
-        result = target.functionCallWithValue(data, value);
-    }
-
-    /// @inheritdoc IElitraVault
-    function manageBatch(Call[] calldata calls)
-        external
-        requiresAuth
-    {
-        require(calls.length > 0, "No calls provided");
-
-        for (uint256 i = 0; i < calls.length; i++) {
-            bytes4 functionSig = bytes4(calls[i].data);
-            require(
-                authority().canCall(msg.sender, calls[i].target, functionSig),
-                Errors.TargetMethodNotAuthorized(calls[i].target, functionSig)
-            );
-
-            bytes memory result = calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
-            emit ManageBatchOperation(i, calls[i].target, functionSig, calls[i].value, result);
-        }
-    }
-
     // ========================================= ERC4626 OVERRIDES =========================================
 
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
@@ -292,17 +253,5 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     function maxRedeem(address owner) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
         if (paused()) return 0;
         return super.maxRedeem(owner);
-    }
-
-    // ========================================= EMERGENCY CONTROLS =========================================
-
-    /// @inheritdoc IElitraVault
-    function pause() public requiresAuth {
-        _pause();
-    }
-
-    /// @inheritdoc IElitraVault
-    function unpause() public requiresAuth {
-        _unpause();
     }
 }
