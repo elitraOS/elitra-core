@@ -100,7 +100,7 @@ interface IBridgeAdapter {
      */
     function manageBatch(
         Call[] calldata calls
-    ) internal;
+    ) external;
 
     /**
      * @notice Deposit tokens into vault for receiver

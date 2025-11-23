@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { Errors } from "../libraries/Errors.sol";
 import { Call } from "../interfaces/IElitraVault.sol";
-import { ICallValidator } from "../interfaces/ICallValidator.sol";
+import { ITransactionGuard } from "../interfaces/ITransactionGuard.sol";
 import { Compatible } from "./Compatible.sol";
 import { AuthUpgradeable, Authority } from "./AuthUpgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
@@ -15,13 +15,13 @@ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible {
     using Address for address;
 
-    /// @notice Mapping of target contracts to their validators
-    mapping(address target => ICallValidator validator) public validators;
+    /// @notice Mapping of target contracts to their guards
+    mapping(address target => ITransactionGuard guard) public guards;
 
-    /// @notice Emitted when a validator is updated
+    /// @notice Emitted when a guard is updated
     /// @param target The target contract address
-    /// @param validator The validator contract address
-    event ValidatorUpdated(address indexed target, address indexed validator);
+    /// @param guard The guard contract address
+    event GuardUpdated(address indexed target, address indexed guard);
 
     /// @notice Emitted when a batch of calls is executed
     /// @param index The index of the call in the batch
@@ -59,12 +59,12 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
         _unpause();
     }
 
-    /// @notice Sets the validator for a specific target
+    /// @notice Sets the guard for a specific target
     /// @param target The target contract address
-    /// @param validator The validator contract address
-    function setValidator(address target, address validator) external virtual requiresAuth {
-        validators[target] = ICallValidator(validator);
-        emit ValidatorUpdated(target, validator);
+    /// @param guard The guard contract address
+    function setGuard(address target, address guard) external virtual requiresAuth {
+        guards[target] = ITransactionGuard(guard);
+        emit GuardUpdated(target, guard);
     }
 
     /// @notice Execute a call to a target contract
@@ -78,11 +78,11 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
         requiresAuth
         returns (bytes memory result)
     {
-        ICallValidator validator = validators[target];
-        require(address(validator) != address(0), Errors.TransactionValidationFailed(target));
+        ITransactionGuard guard = guards[target];
+        require(address(guard) != address(0), Errors.TransactionValidationFailed(target));
         
         require(
-            validator.validate(msg.sender, data, value),
+            guard.validate(msg.sender, data, value),
             Errors.TransactionValidationFailed(target)
         );
 
@@ -99,11 +99,11 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
         require(calls.length > 0, "No calls provided");
 
         for (uint256 i = 0; i < calls.length; ++i) {
-            ICallValidator validator = validators[calls[i].target];
-            require(address(validator) != address(0), Errors.TransactionValidationFailed(calls[i].target));
+            ITransactionGuard guard = guards[calls[i].target];
+            require(address(guard) != address(0), Errors.TransactionValidationFailed(calls[i].target));
 
             require(
-                validator.validate(msg.sender, calls[i].data, calls[i].value),
+                guard.validate(msg.sender, calls[i].data, calls[i].value),
                 Errors.TransactionValidationFailed(calls[i].target)
             );
 

@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
 import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
+import { ICallValidator } from "./interfaces/ICallValidator.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
@@ -264,10 +265,12 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         requiresAuth
         returns (bytes memory result)
     {
-        bytes4 functionSig = bytes4(data);
+        ICallValidator validator = validators[target];
+        require(address(validator) != address(0), Errors.TransactionValidationFailed(target));
+
         require(
-            authority().canCall(msg.sender, target, functionSig),
-            Errors.TargetMethodNotAuthorized(target, functionSig)
+            validator.validate(msg.sender, data, value),
+            Errors.TransactionValidationFailed(target)
         );
 
         result = target.functionCallWithValue(data, value);
@@ -281,14 +284,17 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     {
         require(calls.length > 0, "No calls provided");
 
-        for (uint256 i = 0; i < calls.length; i++) {
-            bytes4 functionSig = bytes4(calls[i].data);
+        for (uint256 i = 0; i < calls.length; ++i) {
+            ICallValidator validator = validators[calls[i].target];
+            require(address(validator) != address(0), Errors.TransactionValidationFailed(calls[i].target));
+
             require(
-                authority().canCall(msg.sender, calls[i].target, functionSig),
-                Errors.TargetMethodNotAuthorized(calls[i].target, functionSig)
+                validator.validate(msg.sender, calls[i].data, calls[i].value),
+                Errors.TransactionValidationFailed(calls[i].target)
             );
 
             bytes memory result = calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
+            bytes4 functionSig = bytes4(calls[i].data);
             emit ManageBatchOperation(i, calls[i].target, functionSig, calls[i].value, result);
         }
     }
