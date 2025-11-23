@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
-import { IElitraVault } from "./interfaces/IElitraVault.sol";
+import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
@@ -209,21 +209,21 @@ contract ElitraVault is ERC4626Upgradeable, Compatible, IElitraVault, AuthUpgrad
     }
 
     /// @inheritdoc IElitraVault
-    function manageBatch(address[] calldata targets, bytes[] calldata data, uint256[] calldata values)
+    function manageBatch(Call[] calldata calls)
         external
         requiresAuth
     {
-        require(targets.length == data.length && data.length == values.length, "Array length mismatch");
+        require(calls.length > 0, "No calls provided");
 
-        for (uint256 i = 0; i < targets.length; i++) {
-            bytes4 functionSig = bytes4(data[i]);
+        for (uint256 i = 0; i < calls.length; i++) {
+            bytes4 functionSig = bytes4(calls[i].data);
             require(
-                authority().canCall(msg.sender, targets[i], functionSig),
-                Errors.TargetMethodNotAuthorized(targets[i], functionSig)
+                authority().canCall(msg.sender, calls[i].target, functionSig),
+                Errors.TargetMethodNotAuthorized(calls[i].target, functionSig)
             );
 
-            bytes memory result = targets[i].functionCallWithValue(data[i], values[i]);
-            emit ManageBatchOperation(i, targets[i], functionSig, values[i], result);
+            bytes memory result = calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
+            emit ManageBatchOperation(i, calls[i].target, functionSig, calls[i].value, result);
         }
     }
 

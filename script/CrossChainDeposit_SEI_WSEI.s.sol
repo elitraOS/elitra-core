@@ -5,6 +5,7 @@ import {BaseScript} from "./Base.s.sol";
 import {console} from "forge-std/console.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IMultichainDepositAdapter} from "../src/interfaces/IMultichainDepositAdapter.sol";
+import {Call} from "../src/interfaces/IElitraVault.sol";
 
 /**
  * @notice LayerZero V2 SendParam struct
@@ -80,10 +81,10 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
         console.log("Destination EID:", dstEid);
 
         // Build zap calls for wrapping SEI to WSEI on destination chain
-        IMultichainDepositAdapter.Call[] memory zapCalls = new IMultichainDepositAdapter.Call[](1);
+        Call[] memory zapCalls = new Call[](1);
 
         // Wrap SEI to WSEI by calling WSEI.deposit() with value
-        zapCalls[0] = IMultichainDepositAdapter.Call({
+        zapCalls[0] = Call({
             target: wseiAddress,
             value: amount, // Send SEI value to wrap
             data: abi.encodeWithSignature("deposit()") // WSEI.deposit()

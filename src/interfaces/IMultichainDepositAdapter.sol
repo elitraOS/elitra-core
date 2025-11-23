@@ -1,31 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.22;
 
+import { Call } from "./IElitraVault.sol";
 /**
  * @title IMultichainDepositAdapter
  * @notice Simple cross-chain vault deposit adapter using LayerZero OFT compose
  * @dev Receives tokens via LayerZero, executes arbitrary operations (zaps), then deposits to vault
  *
- * Flow:
- * 1. User calls TokenOFT.send() with composeMsg = abi.encode(vaultAddress, receiver, zapCalls)
- * 2. Token is transferred via LayerZero OFT to this adapter
- * 3. LayerZero endpoint calls lzCompose() on this adapter
- * 4. Adapter executes zapCalls (if any) to convert tokens
- * 5. Adapter deposits resulting tokens into vault for receiver
- * 6. If any step fails, adapter attempts automatic refund to source chain
- *
- * Example Use Cases:
- * - Receive SEI, wrap to WSEI, deposit into WSEI vault
- *   zapCalls = [Call(WSEI, amountIn, abi.encodeCall(WSEI.deposit, ()))]
- *
- * - Receive SEI, swap to USDC via DEX, deposit into USDC vault
- *   zapCalls = [Call(DEXRouter, 0, abi.encodeCall(router.swap, (SEI, USDC, amountIn, minOut)))]
- *
- * - Receive USDC directly, deposit into USDC vault (no zap)
- *   zapCalls = []
- *
- * - Complex multi-step zap: SEI -> WSEI -> swap to USDC -> deposit
- *   zapCalls = [Call(WSEI, amountIn, wrap()), Call(Router, 0, swap(...))]
  */
 interface IMultichainDepositAdapter {
     // ========================================= STRUCTS =========================================
@@ -36,11 +17,6 @@ interface IMultichainDepositAdapter {
      * @param value Native value to send
      * @param data Calldata for the call
      */
-    struct Call {
-        address target;
-        uint256 value;
-        bytes data;
-    }
 
     /**
      * @notice Deposit status tracking
@@ -141,16 +117,12 @@ interface IMultichainDepositAdapter {
 
     /**
      * @notice Execute batch operations (zapping)
-     * @param targets Array of target contracts
-     * @param data Array of calldata for each target
-     * @param values Array of native values for each call
+     * @param calls Array of Call structs containing target, data, and value
      * @dev Only callable by this contract during deposit processing
      * @dev Similar to ElitraVault.manageBatch but without auth restrictions
      */
     function manageBatch(
-        address[] calldata targets,
-        bytes[] calldata data,
-        uint256[] calldata values
+        Call[] calldata calls
     ) external;
 
     /**

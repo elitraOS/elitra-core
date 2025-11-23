@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import { ElitraVault_Base_Test } from "./Base.t.sol";
-import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
+import { IElitraVault, Call } from "../../../src/interfaces/IElitraVault.sol";
 import { MockAuthority } from "../../mocks/MockAuthority.sol";
 import { Authority } from "@solmate/auth/Auth.sol";
 
@@ -52,28 +52,32 @@ contract ManageBatch_Test is ElitraVault_Base_Test {
 
     function test_ManageBatch_ExecutesMultipleOperations() public {
         // Prepare batch operations
-        address[] memory targets = new address[](3);
-        bytes[] memory data = new bytes[](3);
-        uint256[] memory values = new uint256[](3);
+        Call[] memory calls = new Call[](3);
 
         // Operation 1: increment target1
-        targets[0] = address(target1);
-        data[0] = abi.encodeWithSelector(MockTarget.increment.selector);
-        values[0] = 0;
+        calls[0] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
 
         // Operation 2: add 5 to target1
-        targets[1] = address(target1);
-        data[1] = abi.encodeWithSelector(MockTarget.add.selector, 5);
-        values[1] = 0;
+        calls[1] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.add.selector, 5),
+            value: 0
+        });
 
         // Operation 3: increment target2
-        targets[2] = address(target2);
-        data[2] = abi.encodeWithSelector(MockTarget.increment.selector);
-        values[2] = 0;
+        calls[2] = Call({
+            target: address(target2),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
 
         // Execute batch as owner
         vm.prank(owner);
-        vault.manageBatch(targets, data, values);
+        vault.manageBatch(calls);
 
         // Verify operations were executed
         assertEq(target1.counter(), 6); // 1 + 5
@@ -81,17 +85,19 @@ contract ManageBatch_Test is ElitraVault_Base_Test {
     }
 
     function test_ManageBatch_EmitsEvents() public {
-        address[] memory targets = new address[](2);
-        bytes[] memory data = new bytes[](2);
-        uint256[] memory values = new uint256[](2);
+        Call[] memory calls = new Call[](2);
 
-        targets[0] = address(target1);
-        data[0] = abi.encodeWithSelector(MockTarget.increment.selector);
-        values[0] = 0;
+        calls[0] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
 
-        targets[1] = address(target2);
-        data[1] = abi.encodeWithSelector(MockTarget.increment.selector);
-        values[1] = 0;
+        calls[1] = Call({
+            target: address(target2),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
 
         // Expect events to be emitted
         vm.expectEmit(true, true, false, true);
@@ -113,53 +119,53 @@ contract ManageBatch_Test is ElitraVault_Base_Test {
         );
 
         vm.prank(owner);
-        vault.manageBatch(targets, data, values);
+        vault.manageBatch(calls);
     }
 
-    function test_ManageBatch_RevertsOnArrayLengthMismatch() public {
-        address[] memory targets = new address[](2);
-        bytes[] memory data = new bytes[](3); // Mismatched length
-        uint256[] memory values = new uint256[](2);
+    function test_ManageBatch_RevertsOnEmptyCalls() public {
+        Call[] memory calls = new Call[](0);
 
         vm.prank(owner);
-        vm.expectRevert("Array length mismatch");
-        vault.manageBatch(targets, data, values);
+        vm.expectRevert("No calls provided");
+        vault.manageBatch(calls);
     }
 
     function test_ManageBatch_RevertsWhenUnauthorized() public {
-        address[] memory targets = new address[](1);
-        bytes[] memory data = new bytes[](1);
-        uint256[] memory values = new uint256[](1);
+        Call[] memory calls = new Call[](1);
 
-        targets[0] = address(target1);
-        data[0] = abi.encodeWithSelector(MockTarget.increment.selector);
-        values[0] = 0;
+        calls[0] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
 
         address unauthorized = makeAddr("unauthorized");
 
         vm.prank(unauthorized);
         vm.expectRevert(); // Should revert due to requiresAuth
-        vault.manageBatch(targets, data, values);
+        vault.manageBatch(calls);
     }
 
     function test_ManageBatch_HandlesValueTransfers() public {
         // Fund the vault with ETH
         vm.deal(address(vault), 1 ether);
 
-        address[] memory targets = new address[](2);
-        bytes[] memory data = new bytes[](2);
-        uint256[] memory values = new uint256[](2);
+        Call[] memory calls = new Call[](2);
 
-        targets[0] = address(target1);
-        data[0] = abi.encodeWithSelector(MockTarget.increment.selector);
-        values[0] = 0.1 ether;
+        calls[0] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0.1 ether
+        });
 
-        targets[1] = address(target2);
-        data[1] = abi.encodeWithSelector(MockTarget.add.selector, 10);
-        values[1] = 0.2 ether;
+        calls[1] = Call({
+            target: address(target2),
+            data: abi.encodeWithSelector(MockTarget.add.selector, 10),
+            value: 0.2 ether
+        });
 
         vm.prank(owner);
-        vault.manageBatch(targets, data, values);
+        vault.manageBatch(calls);
 
         // Verify ETH was transferred
         assertEq(target1.lastValue(), 0.1 ether);

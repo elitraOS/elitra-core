@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {BaseScript} from "./Base.s.sol";
 import {console} from "forge-std/console.sol";
-import {MultichainDepositAdapter} from "../src/MultichainDepositAdapter.sol";
+import {MultichainDepositAdapter} from "../src/crosschain/MultichainDepositAdapter.sol";
 
 /**
  * @title Configure_DVNs_Adapter

@@ -5,6 +5,13 @@ import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IBalanceUpdateHook } from "./IBalanceUpdateHook.sol";
 import { IRedemptionHook } from "./IRedemptionHook.sol";
 
+/// @notice Call structure for batch operations
+struct Call {
+    address target;
+    bytes data;
+    uint256 value;
+}
+
 /// @title IElitraVault
 /// @notice Interface for ElitraVault with adapter integration
 interface IElitraVault is IERC4626 {
@@ -56,7 +63,7 @@ interface IElitraVault is IERC4626 {
 
     // Strategy management
     function manage(address target, bytes calldata data, uint256 value) external returns (bytes memory);
-    function manageBatch(address[] calldata targets, bytes[] calldata data, uint256[] calldata values) external;
+    function manageBatch(Call[] calldata calls) external;
 
     // Emergency controls
     function pause() external;

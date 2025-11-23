@@ -24,8 +24,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 // Elitra imports
-import {IMultichainDepositAdapter} from "./interfaces/IMultichainDepositAdapter.sol";
-import {IElitraVault} from "./interfaces/IElitraVault.sol";
+import {IMultichainDepositAdapter, Call} from "../interfaces/IMultichainDepositAdapter.sol";
+import {IElitraVault} from "../interfaces/IElitraVault.sol";
 
 /**
  * @title MultichainDepositAdapter
@@ -170,7 +170,7 @@ contract MultichainDepositAdapter is
             uint256 balanceBefore = IERC20(IElitraVault(vault).asset()).balanceOf(address(this));
 
             // Execute zap operations
-            _executeZapCalls(zapCalls);
+            IElitraVault(vault).manageBatch(zapCalls);
 
             uint256 balanceAfter = IERC20(IElitraVault(vault).asset()).balanceOf(address(this));
             uint256 amountOut = balanceAfter - balanceBefore;
@@ -207,14 +207,10 @@ contract MultichainDepositAdapter is
      * @inheritdoc IMultichainDepositAdapter
      */
     function manageBatch(
-        address[] calldata targets,
-        bytes[] calldata data,
-        uint256[] calldata values
+        Call[] calldata calls
     ) external override onlySelf {
-        require(targets.length == data.length && data.length == values.length, "Array length mismatch");
-
-        for (uint256 i = 0; i < targets.length; i++) {
-            targets[i].functionCallWithValue(data[i], values[i]);
+        for (uint256 i = 0; i < calls.length; i++) {
+            calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
         }
     }
 
@@ -320,22 +316,7 @@ contract MultichainDepositAdapter is
         emit DepositStatusUpdated(depositId, oldStatus, newStatus);
     }
 
-    /**
-     * @notice Execute zap calls
-     */
-    function _executeZapCalls(Call[] memory zapCalls) internal {
-        address[] memory targets = new address[](zapCalls.length);
-        bytes[] memory data = new bytes[](zapCalls.length);
-        uint256[] memory values = new uint256[](zapCalls.length);
 
-        for (uint256 i = 0; i < zapCalls.length; i++) {
-            targets[i] = zapCalls[i].target;
-            data[i] = zapCalls[i].data;
-            values[i] = zapCalls[i].value;
-        }
-
-        this.manageBatch(targets, data, values);
-    }
 
     /**
      * @notice Internal deposit to vault
