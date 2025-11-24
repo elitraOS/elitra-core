@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
 import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
-import { ICallValidator } from "./interfaces/ICallValidator.sol";
+import { ITransactionGuard } from "./interfaces/ITransactionGuard.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
@@ -265,11 +265,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         requiresAuth
         returns (bytes memory result)
     {
-        ICallValidator validator = validators[target];
-        require(address(validator) != address(0), Errors.TransactionValidationFailed(target));
+        ITransactionGuard guard = guards[target];
+        require(address(guard) != address(0), Errors.TransactionValidationFailed(target));
 
         require(
-            validator.validate(msg.sender, data, value),
+            guard.validate(msg.sender, data, value),
             Errors.TransactionValidationFailed(target)
         );
 
@@ -285,11 +285,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         require(calls.length > 0, "No calls provided");
 
         for (uint256 i = 0; i < calls.length; ++i) {
-            ICallValidator validator = validators[calls[i].target];
-            require(address(validator) != address(0), Errors.TransactionValidationFailed(calls[i].target));
+            ITransactionGuard guard = guards[calls[i].target];
+            require(address(guard) != address(0), Errors.TransactionValidationFailed(calls[i].target));
 
             require(
-                validator.validate(msg.sender, calls[i].data, calls[i].value),
+                guard.validate(msg.sender, calls[i].data, calls[i].value),
                 Errors.TransactionValidationFailed(calls[i].target)
             );
 

@@ -67,6 +67,13 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
         emit GuardUpdated(target, guard);
     }
 
+    /// @notice Removes the guard for a specific target
+    /// @param target The target contract address
+    function removeGuard(address target) external virtual requiresAuth {
+        delete guards[target];
+        emit GuardRemoved(target);
+    }
+
     /// @notice Execute a call to a target contract
     /// @param target The address of the target contract
     /// @param data The calldata to execute
