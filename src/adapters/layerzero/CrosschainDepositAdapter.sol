@@ -24,7 +24,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 // Elitra imports
-import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
+import {ICrosschainDepositAdapter} from "../interfaces/ICrosschainDepositAdapter.sol";
 import {IElitraVault, Call} from "../interfaces/IElitraVault.sol";
 
 /**
@@ -38,12 +38,12 @@ import {IElitraVault, Call} from "../interfaces/IElitraVault.sol";
  * - Gas-efficient design with reserved gas for error handling
  * - Full deposit tracking and recovery mechanisms
  */
-contract BridgeAdapter is
+contract CrosschainDepositAdapter is
     Initializable,
     OAppUpgradeable,
     OAppOptionsType3Upgradeable,
     IOAppComposer,
-    IBridgeAdapter,
+    ICrosschainDepositAdapter,
     ReentrancyGuardUpgradeable,
     PausableUpgradeable,
     AccessControlUpgradeable,
@@ -189,7 +189,7 @@ contract BridgeAdapter is
 
     /**
      * @notice External wrapper for processDeposit (kept for interface compatibility)
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function processDeposit(
         uint256 depositId,
@@ -204,7 +204,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Execute batch of zap operations
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function manageBatch(
         Call[] calldata calls
@@ -216,7 +216,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Deposit tokens into vault for receiver
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function depositToVault(
         address vault,
@@ -228,7 +228,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Safely attempt refund (external to enable try-catch)
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function safeAttemptRefund(uint256 depositId) external override onlySelf {
         _attemptRefund(depositId);
@@ -236,7 +236,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Manual refund for failed deposits
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function manualRefund(uint256 depositId) external override onlyOwnerOrOperator nonReentrant {
         DepositRecord storage record = depositRecords[depositId];
@@ -253,7 +253,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Batch manual refund for multiple deposits
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function batchManualRefund(uint256[] calldata depositIds) external override onlyOwnerOrOperator nonReentrant {
         for (uint256 i = 0; i < depositIds.length; i++) {
@@ -416,28 +416,28 @@ contract BridgeAdapter is
     }
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function pause() external override onlyOwnerOrOperator {
         _pause();
     }
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function unpause() external override onlyOwnerOrOperator {
         _unpause();
     }
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function depositRefundGas() external payable override {
         require(msg.value > 0, "Must send ETH");
     }
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function emergencyRecover(address token, address to, uint256 amount) external override onlyOwner {
         require(to != address(0), "Invalid recipient");
@@ -473,21 +473,21 @@ contract BridgeAdapter is
     // ========================================= VIEW FUNCTIONS =========================================
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function getDepositRecord(uint256 depositId) external view override returns (DepositRecord memory) {
         return depositRecords[depositId];
     }
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function getUserDepositIds(address user) external view override returns (uint256[] memory) {
         return userDepositIds[user];
     }
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function getFailedDeposits(uint256 startId, uint256 limit)
         external
@@ -518,7 +518,7 @@ contract BridgeAdapter is
     }
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function quoteRefundFee(uint256 depositId) external view override returns (uint256 nativeFee) {
         DepositRecord storage record = depositRecords[depositId];
@@ -549,7 +549,7 @@ contract BridgeAdapter is
     }
 
     /**
-     * @inheritdoc IBridgeAdapter
+     * @inheritdoc ICrosschainDepositAdapter
      */
     function isVaultSupported(address vault) external view override returns (bool) {
         return supportedVaults[vault];

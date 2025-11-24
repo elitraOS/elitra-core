@@ -7,7 +7,7 @@ import { Call } from "./IElitraVault.sol";
  * @notice Bridge adapter, for handling crosschain fund movements
  *
  */
-interface IBridgeAdapter {
+interface ICrosschainDepositAdapter {
     // ========================================= STRUCTS =========================================
 
     /**
