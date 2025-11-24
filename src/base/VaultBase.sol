@@ -23,6 +23,10 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
     /// @param guard The guard contract address
     event GuardUpdated(address indexed target, address indexed guard);
 
+    /// @notice Emitted when a guard is removed
+    /// @param target The target contract address
+    event GuardRemoved(address indexed target);
+
     /// @notice Emitted when a batch of calls is executed
     /// @param index The index of the call in the batch
     /// @param target The address of the target contract
