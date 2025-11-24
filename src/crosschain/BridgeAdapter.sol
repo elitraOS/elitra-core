@@ -24,8 +24,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 // Elitra imports
-import {IMultichainDepositAdapter, Call} from "../interfaces/IMultichainDepositAdapter.sol";
-import {IElitraVault} from "../interfaces/IElitraVault.sol";
+import {IBridgeAdapter} from "../interfaces/IBridgeAdapter.sol";
+import {IElitraVault, Call} from "../interfaces/IElitraVault.sol";
 
 /**
  * @title MultichainDepositAdapter
@@ -43,7 +43,7 @@ contract BridgeAdapter is
     OAppUpgradeable,
     OAppOptionsType3Upgradeable,
     IOAppComposer,
-    IMultichainDepositAdapter,
+    IBridgeAdapter,
     ReentrancyGuardUpgradeable,
     PausableUpgradeable,
     AccessControlUpgradeable,
@@ -108,7 +108,7 @@ contract BridgeAdapter is
 
     /**
      * @notice LayerZero compose callback - receives tokens and processes deposit
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc ILayerZeroComposer
      */
     function lzCompose(
         address _from,
@@ -116,7 +116,7 @@ contract BridgeAdapter is
         bytes calldata _message,
         address, // executor
         bytes calldata // extraData
-    ) external payable override(ILayerZeroComposer, IMultichainDepositAdapter) whenNotPaused nonReentrant {
+    ) external payable override(ILayerZeroComposer) whenNotPaused nonReentrant {
         // Only accept compose messages from the LayerZero endpoint
         require(msg.sender == address(endpoint), "Only endpoint");
 
@@ -189,7 +189,7 @@ contract BridgeAdapter is
 
     /**
      * @notice External wrapper for processDeposit (kept for interface compatibility)
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function processDeposit(
         uint256 depositId,
@@ -204,7 +204,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Execute batch of zap operations
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function manageBatch(
         Call[] calldata calls
@@ -216,7 +216,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Deposit tokens into vault for receiver
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function depositToVault(
         address vault,
@@ -228,7 +228,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Safely attempt refund (external to enable try-catch)
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function safeAttemptRefund(uint256 depositId) external override onlySelf {
         _attemptRefund(depositId);
@@ -236,7 +236,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Manual refund for failed deposits
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function manualRefund(uint256 depositId) external override onlyOwnerOrOperator nonReentrant {
         DepositRecord storage record = depositRecords[depositId];
@@ -253,7 +253,7 @@ contract BridgeAdapter is
 
     /**
      * @notice Batch manual refund for multiple deposits
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function batchManualRefund(uint256[] calldata depositIds) external override onlyOwnerOrOperator nonReentrant {
         for (uint256 i = 0; i < depositIds.length; i++) {
@@ -399,45 +399,45 @@ contract BridgeAdapter is
     // ========================================= ADMIN FUNCTIONS =========================================
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @notice Set supported OFT token mapping
      */
-    function setSupportedOFT(address token, address oft, bool isActive) external override onlyOwner {
+    function setSupportedOFT(address token, address oft, bool isActive) external onlyOwner {
         require(token != address(0) && oft != address(0), "Invalid address");
         tokenToOFT[token] = oft;
         supportedOFTs[oft] = isActive;
     }
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @notice Set supported vault
      */
-    function setSupportedVault(address vault, bool isActive) external override onlyOwner {
+    function setSupportedVault(address vault, bool isActive) external onlyOwner {
         require(vault != address(0), "Invalid vault");
         supportedVaults[vault] = isActive;
     }
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function pause() external override onlyOwnerOrOperator {
         _pause();
     }
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function unpause() external override onlyOwnerOrOperator {
         _unpause();
     }
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function depositRefundGas() external payable override {
         require(msg.value > 0, "Must send ETH");
     }
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function emergencyRecover(address token, address to, uint256 amount) external override onlyOwner {
         require(to != address(0), "Invalid recipient");
@@ -473,21 +473,21 @@ contract BridgeAdapter is
     // ========================================= VIEW FUNCTIONS =========================================
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function getDepositRecord(uint256 depositId) external view override returns (DepositRecord memory) {
         return depositRecords[depositId];
     }
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function getUserDepositIds(address user) external view override returns (uint256[] memory) {
         return userDepositIds[user];
     }
 
     /**
-     * @inheritdoc IMultichainDepositAdapter
+     * @inheritdoc IBridgeAdapter
      */
     function getFailedDeposits(uint256 startId, uint256 limit)
         external
@@ -517,7 +517,45 @@ contract BridgeAdapter is
         }
     }
 
-   
+    /**
+     * @inheritdoc IBridgeAdapter
+     */
+    function quoteRefundFee(uint256 depositId) external view override returns (uint256 nativeFee) {
+        DepositRecord storage record = depositRecords[depositId];
+
+        // If same-chain deposit (srcEid == 0), no fee needed
+        if (record.srcEid == 0) {
+            return 0;
+        }
+
+        // Cross-chain refund via OFT
+        address oft = tokenToOFT[record.tokenIn];
+        require(oft != address(0), "OFT not found");
+
+        // Build SendParam for refund
+        SendParam memory sendParam = SendParam({
+            dstEid: record.srcEid,
+            to: OFTComposeMsgCodec.addressToBytes32(record.user),
+            amountLD: record.amountIn,
+            minAmountLD: (record.amountIn * 9900) / 10000, // 1% slippage
+            extraOptions: "",
+            composeMsg: "",
+            oftCmd: ""
+        });
+
+        // Quote the messaging fee
+        MessagingFee memory fee = IOFT(oft).quoteSend(sendParam, false);
+        return fee.nativeFee;
+    }
+
+    /**
+     * @inheritdoc IBridgeAdapter
+     */
+    function isVaultSupported(address vault) external view override returns (bool) {
+        return supportedVaults[vault];
+    }
+
+
     // ========================================= LAYERZERO OVERRIDES =========================================
 
     /**

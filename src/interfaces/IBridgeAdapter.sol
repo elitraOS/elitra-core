@@ -180,6 +180,21 @@ interface IBridgeAdapter {
      */
     function emergencyRecover(address token, address to, uint256 amount) external;
 
+    /**
+     * @notice Set supported OFT token mapping
+     * @param token Token address
+     * @param oft OFT contract address
+     * @param isActive Whether to activate or deactivate
+     */
+    function setSupportedOFT(address token, address oft, bool isActive) external;
+
+    /**
+     * @notice Set supported vault
+     * @param vault Vault address
+     * @param isActive Whether to activate or deactivate
+     */
+    function setSupportedVault(address vault, bool isActive) external;
+
     // ========================================= VIEW FUNCTIONS =========================================
 
     /**
