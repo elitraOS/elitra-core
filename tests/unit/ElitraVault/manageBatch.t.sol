@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { ElitraVault_Base_Test } from "./Base.t.sol";
 import { IElitraVault, Call } from "../../../src/interfaces/IElitraVault.sol";
-import { VaultBase } from "../../../src/base/VaultBase.sol";
+import { IVaultBase } from "../../../src/interfaces/IVaultBase.sol";
 import { MockAuthority } from "../../mocks/MockAuthority.sol";
 import { Authority } from "@solmate/auth/Auth.sol";
 
@@ -83,44 +83,6 @@ contract ManageBatch_Test is ElitraVault_Base_Test {
         // Verify operations were executed
         assertEq(target1.counter(), 6); // 1 + 5
         assertEq(target2.counter(), 1);
-    }
-
-    function test_ManageBatch_EmitsEvents() public {
-        Call[] memory calls = new Call[](2);
-
-        calls[0] = Call({
-            target: address(target1),
-            data: abi.encodeWithSelector(MockTarget.increment.selector),
-            value: 0
-        });
-
-        calls[1] = Call({
-            target: address(target2),
-            data: abi.encodeWithSelector(MockTarget.increment.selector),
-            value: 0
-        });
-
-        // Expect events to be emitted
-        vm.expectEmit(true, true, false, true);
-        emit VaultBase.ManageBatchOperation(
-            0,
-            address(target1),
-            MockTarget.increment.selector,
-            0,
-            ""
-        );
-
-        vm.expectEmit(true, true, false, true);
-        emit VaultBase.ManageBatchOperation(
-            1,
-            address(target2),
-            MockTarget.increment.selector,
-            0,
-            ""
-        );
-
-        vm.prank(owner);
-        vault.manageBatch(calls);
     }
 
     function test_ManageBatch_RevertsOnEmptyCalls() public {

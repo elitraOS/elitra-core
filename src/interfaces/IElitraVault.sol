@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IBalanceUpdateHook } from "./IBalanceUpdateHook.sol";
 import { IRedemptionHook } from "./IRedemptionHook.sol";
+import { IVaultBase } from "./IVaultBase.sol";
 
 /// @notice Call structure for batch operations
 struct Call {
@@ -14,7 +15,7 @@ struct Call {
 
 /// @title IElitraVault
 /// @notice Interface for ElitraVault with adapter integration
-interface IElitraVault is IERC4626 {
+interface IElitraVault is IERC4626, IVaultBase {
     /// @notice Pending redemption data structure
     struct PendingRedeem {
         uint256 shares;
@@ -53,12 +54,4 @@ interface IElitraVault is IERC4626 {
     function fulfillRedeem(address receiver, uint256 shares, uint256 assets) external;
     function cancelRedeem(address receiver, uint256 shares, uint256 assets) external;
     function pendingRedeemRequest(address user) external view returns (uint256 assets, uint256 pendingShares);
-
-    // Strategy management
-    function manage(address target, bytes calldata data, uint256 value) external returns (bytes memory);
-    function manageBatch(Call[] calldata calls) external;
-
-    // Emergency controls
-    function pause() external;
-    function unpause() external;
 }

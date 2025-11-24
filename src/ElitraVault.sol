@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
 import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
+import { IVaultBase } from "./interfaces/IVaultBase.sol";
 import { ITransactionGuard } from "./interfaces/ITransactionGuard.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
@@ -256,56 +257,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         return super.maxRedeem(owner);
     }
 
-    // ========================================= VAULTBASE & INTERFACE COMPATIBILITY =========================================
-
-    /// @inheritdoc IElitraVault
-    function manage(address target, bytes calldata data, uint256 value)
-        external
-        override(VaultBase, IElitraVault)
-        requiresAuth
-        returns (bytes memory result)
-    {
-        ITransactionGuard guard = guards[target];
-        require(address(guard) != address(0), Errors.TransactionValidationFailed(target));
-
-        require(
-            guard.validate(msg.sender, data, value),
-            Errors.TransactionValidationFailed(target)
-        );
-
-        result = target.functionCallWithValue(data, value);
-    }
-
-    /// @inheritdoc IElitraVault
-    function manageBatch(Call[] calldata calls)
-        external
-        override(VaultBase, IElitraVault)
-        requiresAuth
-    {
-        require(calls.length > 0, "No calls provided");
-
-        for (uint256 i = 0; i < calls.length; ++i) {
-            ITransactionGuard guard = guards[calls[i].target];
-            require(address(guard) != address(0), Errors.TransactionValidationFailed(calls[i].target));
-
-            require(
-                guard.validate(msg.sender, calls[i].data, calls[i].value),
-                Errors.TransactionValidationFailed(calls[i].target)
-            );
-
-            bytes memory result = calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
-            bytes4 functionSig = bytes4(calls[i].data);
-            emit ManageBatchOperation(i, calls[i].target, functionSig, calls[i].value, result);
-        }
-    }
-
-    /// @inheritdoc IElitraVault
-    function pause() public override(VaultBase, IElitraVault) requiresAuth {
+    /// @inheritdoc IVaultBase
+    function pause() public override(VaultBase, IVaultBase) requiresAuth {
         _pause();
     }
 
-    /// @inheritdoc IElitraVault
-    function unpause() public override(VaultBase, IElitraVault) requiresAuth {
+    /// @inheritdoc IVaultBase
+    function unpause() public override(VaultBase, IVaultBase) requiresAuth {
         _unpause();
     }
 }

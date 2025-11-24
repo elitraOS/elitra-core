@@ -64,9 +64,6 @@ contract SetupRoles is Script {
         // Configure MANAGER_ROLE capabilities
         console2.log("\n3. Configuring MANAGER_ROLE capabilities...");
 
-        // Manager can call manage()
-        authority.setRoleCapability(MANAGER_ROLE, vaultAddress, ElitraVault.manage.selector, true);
-        console2.log("   - Can call manage()");
 
         // Manager can call updateBalance()
         authority.setRoleCapability(MANAGER_ROLE, vaultAddress, ElitraVault.updateBalance.selector, true);

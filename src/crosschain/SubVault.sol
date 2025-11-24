@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { VaultBase } from "../base/VaultBase.sol";
 import { ISubVault } from "../interfaces/ISubVault.sol";
+import { IVaultBase } from "../interfaces/IVaultBase.sol";
 import { ITransactionGuard } from "../interfaces/ITransactionGuard.sol";
 import { Call } from "../interfaces/IElitraVault.sol";
 import { Errors } from "../libraries/Errors.sol";
@@ -34,7 +35,7 @@ contract SubVault is VaultBase, ISubVault {
     /// @inheritdoc ISubVault
     function manage(address target, bytes calldata data, uint256 value)
         external
-        override(VaultBase, ISubVault)
+        override
         requiresAuth
         returns (bytes memory result)
     {
@@ -49,10 +50,10 @@ contract SubVault is VaultBase, ISubVault {
         result = target.functionCallWithValue(data, value);
     }
 
-    /// @inheritdoc ISubVault
+    /// @inheritdoc IVaultBase
     function manageBatch(Call[] calldata calls)
         external
-        override(VaultBase, ISubVault)
+        override(VaultBase, IVaultBase)
         requiresAuth
     {
         require(calls.length > 0, "No calls provided");

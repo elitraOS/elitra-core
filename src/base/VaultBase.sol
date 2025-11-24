@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { Errors } from "../libraries/Errors.sol";
 import { Call } from "../interfaces/IElitraVault.sol";
+import { IVaultBase } from "../interfaces/IVaultBase.sol";
 import { ITransactionGuard } from "../interfaces/ITransactionGuard.sol";
 import { Compatible } from "./Compatible.sol";
 import { AuthUpgradeable, Authority } from "./AuthUpgradeable.sol";
@@ -12,34 +13,11 @@ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 /// @title VaultBase
 /// @author Elitra
 /// @notice Base contract for Vaults and SubVaults providing auth, pause, and management features
-abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible {
+abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible, IVaultBase {
     using Address for address;
 
     /// @notice Mapping of target contracts to their guards
-    mapping(address target => ITransactionGuard guard) public guards;
-
-    /// @notice Emitted when a guard is updated
-    /// @param target The target contract address
-    /// @param guard The guard contract address
-    event GuardUpdated(address indexed target, address indexed guard);
-
-    /// @notice Emitted when a guard is removed
-    /// @param target The target contract address
-    event GuardRemoved(address indexed target);
-
-    /// @notice Emitted when a batch of calls is executed
-    /// @param index The index of the call in the batch
-    /// @param target The address of the target contract
-    /// @param functionSig The function signature of the call
-    /// @param value The amount of ETH sent with the call
-    /// @param result The return data of the call
-    event ManageBatchOperation(
-        uint256 indexed index,
-        address indexed target,
-        bytes4 functionSig,
-        uint256 value,
-        bytes result
-    );
+    mapping(address target => ITransactionGuard guard) public override guards;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -83,9 +61,8 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
     /// @param data The calldata to execute
     /// @param value The amount of ETH to send
     /// @return result The return data of the call
-    function manage(address target, bytes calldata data, uint256 value)
-        external
-        virtual
+    function _manage(address target, bytes calldata data, uint256 value)
+        internal
         requiresAuth
         returns (bytes memory result)
     {
@@ -110,17 +87,8 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible 
         require(calls.length > 0, "No calls provided");
 
         for (uint256 i = 0; i < calls.length; ++i) {
-            ITransactionGuard guard = guards[calls[i].target];
-            require(address(guard) != address(0), Errors.TransactionValidationFailed(calls[i].target));
-
-            require(
-                guard.validate(msg.sender, calls[i].data, calls[i].value),
-                Errors.TransactionValidationFailed(calls[i].target)
-            );
-
-            bytes memory result = calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
-            bytes4 functionSig = bytes4(calls[i].data);
-            emit ManageBatchOperation(i, calls[i].target, functionSig, calls[i].value, result);
+            bytes memory result = _manage(calls[i].target, calls[i].data, calls[i].value);
+            emit ManageBatchOperation(i, calls[i].target, bytes4(calls[i].data), calls[i].value, result);
         }
     }
 }
