@@ -69,8 +69,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
 
     // ========================================= ORACLE INTEGRATION =========================================
 
-    /// @inheritdoc IElitraVault
-    function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
+    /// @notice Internal function to update vault balance and price per share
+    /// @param newAggregatedBalance The new aggregated balance from external protocols
+    function _updateBalance(uint256 newAggregatedBalance) internal {
         // 1. Validate not already updated this block
         require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
 
@@ -96,6 +97,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
 
         emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
         emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
+    }
+
+
+    function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
+        _updateBalance(newAggregatedBalance);
     }
 
     /// @inheritdoc IElitraVault
@@ -190,16 +196,26 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         return (_pendingRedeem[user].assets, _pendingRedeem[user].shares);
     }
 
-    function manageBatch(Call[] calldata calls) external override(VaultBase, IVaultBase) requiresAuth {
-        // Get asset balance before manager
+    function manageBatch(Call[] calldata calls) public override(VaultBase, IVaultBase) requiresAuth {
+        // Get asset balance before execution
         uint256 beforeBalance = IERC20(asset()).balanceOf(address(this));
 
+        // Execute batch operations
         super.manageBatch(calls);
 
+        // Update aggregated balance based on vault asset balance change
         uint256 afterBalance = IERC20(asset()).balanceOf(address(this));
-        uint256 newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances + afterBalance - beforeBalance;
-        updateBalance(newAggregatedUnderlyingBalances);
+        if (afterBalance != beforeBalance) {
+            uint256 balanceChange = afterBalance > beforeBalance
+                ? afterBalance - beforeBalance
+                : beforeBalance - afterBalance;
 
+            uint256 newAggregatedUnderlyingBalances = afterBalance > beforeBalance
+                ? aggregatedUnderlyingBalances - balanceChange // funds came In, -> extenal balances when down
+                : aggregatedUnderlyingBalances + balanceChange; // funds went out, -> extenal balances when up
+
+            _updateBalance(newAggregatedUnderlyingBalances);
+        }
     }
 
     // ========================================= ERC4626 OVERRIDES =========================================

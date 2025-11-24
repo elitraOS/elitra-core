@@ -80,7 +80,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     /// @notice Execute a batch of calls
     /// @param calls The array of calls to execute
     function manageBatch(Call[] calldata calls)
-        external
+        public
         virtual
         requiresAuth
     {

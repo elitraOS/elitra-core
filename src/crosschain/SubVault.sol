@@ -52,7 +52,7 @@ contract SubVault is VaultBase, ISubVault {
 
     /// @inheritdoc IVaultBase
     function manageBatch(Call[] calldata calls)
-        external
+        public
         override(VaultBase, IVaultBase)
         requiresAuth
     {
