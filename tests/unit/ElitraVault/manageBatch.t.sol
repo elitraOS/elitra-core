@@ -4,8 +4,7 @@ pragma solidity 0.8.28;
 import { ElitraVault_Base_Test } from "./Base.t.sol";
 import { IElitraVault, Call } from "../../../src/interfaces/IElitraVault.sol";
 import { IVaultBase } from "../../../src/interfaces/IVaultBase.sol";
-import { MockAuthority } from "../../mocks/MockAuthority.sol";
-import { Authority } from "@solmate/auth/Auth.sol";
+import { AllowAllGuard, BlockAllGuard } from "../../mocks/MockGuards.sol";
 
 // Mock target contract for testing manageBatch
 contract MockTarget {
@@ -30,24 +29,21 @@ contract MockTarget {
 contract ManageBatch_Test is ElitraVault_Base_Test {
     MockTarget public target1;
     MockTarget public target2;
-    MockAuthority public auth;
+    AllowAllGuard public allowAllGuard;
+    BlockAllGuard public blockAllGuard;
 
     function setUp() public override {
         super.setUp();
         target1 = new MockTarget();
         target2 = new MockTarget();
 
-        // Set up authority with permissions
-        auth = new MockAuthority(owner, Authority(address(0)));
+        allowAllGuard = new AllowAllGuard();
+        blockAllGuard = new BlockAllGuard();
 
         vm.startPrank(owner);
-        vault.setAuthority(Authority(address(auth)));
-
-        // Grant permission to call any function on target contracts
-        auth.setPublicCapability(address(target1), MockTarget.increment.selector, true);
-        auth.setPublicCapability(address(target1), MockTarget.add.selector, true);
-        auth.setPublicCapability(address(target2), MockTarget.increment.selector, true);
-        auth.setPublicCapability(address(target2), MockTarget.add.selector, true);
+        // Set guards for target contracts
+        vault.setGuard(address(target1), address(allowAllGuard));
+        vault.setGuard(address(target2), address(allowAllGuard));
         vm.stopPrank();
     }
 
@@ -133,5 +129,24 @@ contract ManageBatch_Test is ElitraVault_Base_Test {
         // Verify ETH was transferred
         assertEq(target1.lastValue(), 0.1 ether);
         assertEq(target2.lastValue(), 0.2 ether);
+    }
+
+    function test_ManageBatch_RevertsWithBlockAllGuard() public {
+        // Create a new target with BlockAllGuard
+        MockTarget target3 = new MockTarget();
+
+        vm.prank(owner);
+        vault.setGuard(address(target3), address(blockAllGuard));
+
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
+            target: address(target3),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
+
+        vm.prank(owner);
+        vm.expectRevert(); // Should revert due to guard validation failure
+        vault.manageBatch(calls);
     }
 }
