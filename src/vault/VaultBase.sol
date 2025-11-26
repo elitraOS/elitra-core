@@ -19,6 +19,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     /// @custom:storage-location erc7201:elitra.storage.vaultbase
     struct VaultBaseStorage {
         mapping(address target => ITransactionGuard guard) guards;
+        mapping(address target => bool trusted) trustedTargets;
     }
 
     // keccak256(abi.encode(uint256(keccak256("elitra.storage.vaultbase")) - 1)) & ~bytes32(uint256(0xff))
@@ -81,6 +82,23 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
         return vaultBaseStorage.guards[target];
     }
 
+    /// @notice Sets a target as trusted or untrusted
+    /// @param target The target contract address
+    /// @param isTrusted Whether the target is trusted
+    function setTrustedTarget(address target, bool isTrusted) external virtual requiresAuth {
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        vaultBaseStorage.trustedTargets[target] = isTrusted;
+        emit TrustedTargetUpdated(target, isTrusted);
+    }
+
+    /// @notice Returns whether a target is trusted
+    /// @param target The target contract address
+    /// @return Whether the target is trusted
+    function isTrustedTarget(address target) external view override returns (bool) {
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        return vaultBaseStorage.trustedTargets[target];
+    }
+
     /// @notice Execute a call to a target contract
     /// @param target The address of the target contract
     /// @param data The calldata to execute
@@ -92,14 +110,17 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
         returns (bytes memory result)
     {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
-        ITransactionGuard guard = vaultBaseStorage.guards[target];
         
-        if (address(guard) == address(0)) {
-            revert Errors.TransactionValidationFailed(target);
-        }
-        
-        if (!guard.validate(msg.sender, data, value)) {
-            revert Errors.TransactionValidationFailed(target);
+        if (!vaultBaseStorage.trustedTargets[target]) {
+            ITransactionGuard guard = vaultBaseStorage.guards[target];
+            
+            if (address(guard) == address(0)) {
+                revert Errors.TransactionValidationFailed(target);
+            }
+            
+            if (!guard.validate(msg.sender, data, value)) {
+                revert Errors.TransactionValidationFailed(target);
+            }
         }
 
         result = target.functionCallWithValue(data, value);
