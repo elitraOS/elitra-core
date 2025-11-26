@@ -4,14 +4,7 @@ pragma solidity 0.8.28;
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { IBalanceUpdateHook } from "./IBalanceUpdateHook.sol";
 import { IRedemptionHook } from "./IRedemptionHook.sol";
-import { IVaultBase } from "./IVaultBase.sol";
-
-/// @notice Call structure for batch operations
-struct Call {
-    address target;
-    bytes data;
-    uint256 value;
-}
+import { IVaultBase, Call } from "./IVaultBase.sol";
 
 /// @title IElitraVault
 /// @notice Interface for ElitraVault with adapter integration

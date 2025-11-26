@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Call } from "./IElitraVault.sol";
 import { ITransactionGuard } from "./ITransactionGuard.sol";
+
+/// @notice Call structure for batch operations
+struct Call {
+    address target;
+    bytes data;
+    uint256 value;
+}
 
 /**
  * @title IVaultBase

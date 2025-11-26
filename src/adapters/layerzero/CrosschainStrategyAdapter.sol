@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 // LayerZero Official Upgradeable OApp imports
-import {OAppUpgradeable} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
+import {OAppUpgradeable, Origin} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
 import {IOAppComposer} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppComposer.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oapp-evm/contracts/oft/libs/OFTComposeMsgCodec.sol";
 import {ILayerZeroComposer} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
@@ -19,8 +19,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 // Elitra imports
-import {IVaultBase} from "../../interfaces/IVaultBase.sol";
-import {Call} from "../../interfaces/IElitraVault.sol";
+import {IVaultBase, Call} from "../../interfaces/IVaultBase.sol";
 
 /**
  * @title StrategyAdapter
@@ -47,7 +46,6 @@ contract StrategyAdapter is
     // ========================================= ERRORS =========================================
 
     error InvalidOwner();
-    error OnlyEndpoint();
     error InvalidSubVault();
     error InvalidAddress();
     error InvalidRecipient();
@@ -113,9 +111,9 @@ contract StrategyAdapter is
         bytes calldata _message,
         address, // executor
         bytes calldata // extraData
-    ) external payable override(IOAppComposer, ILayerZeroComposer) whenNotPaused nonReentrant {
+    ) external payable override whenNotPaused nonReentrant {
         // Only accept compose messages from the LayerZero endpoint
-        if (msg.sender != address(endpoint)) revert OnlyEndpoint();
+        if (msg.sender != address(endpoint)) revert OnlyEndpoint(msg.sender);
 
         // Validate OFT is supported
         // In this context, _from is the OFT contract address on this chain
@@ -206,9 +204,25 @@ contract StrategyAdapter is
      * @return The underlying token address
      */
     function _getTokenFromOFT(address oft) internal view returns (address) {
-        return oft; 
+        return oft;
     }
-    
+
+    /**
+     * @notice Internal function to handle LayerZero receive
+     * @dev This adapter uses compose messages, not direct receives
+     */
+    function _lzReceive(
+        Origin calldata /*_origin*/,
+        bytes32 /*_guid*/,
+        bytes calldata /*_message*/,
+        address /*_executor*/,
+        bytes calldata /*_extraData*/
+    ) internal override {
+        // This adapter uses lzCompose for receiving tokens via OFT
+        // Direct lzReceive is not used in this implementation
+        revert("Use lzCompose");
+    }
+
     /**
      * @notice Allow receiving ETH
      */
