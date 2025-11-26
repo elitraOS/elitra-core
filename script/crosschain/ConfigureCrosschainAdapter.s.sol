@@ -23,11 +23,11 @@ contract ConfigureCrosschainAdapter is Script {
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
         address caller = vm.addr(privateKey);
 
-        address adapterAddress = vm.envAddress("CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS");
-        address tokenAddress = vm.envAddress("TOKEN_ADDRESS");
-        address oftAddress = vm.envAddress("OFT_ADDRESS");
-        uint32 dstEid = uint32(vm.envUint("DST_EID"));
-        address dstVaultAddress = vm.envAddress("DST_VAULT_ADDRESS");
+        address adapterAddress = vm.envAddress("CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS");
+        address tokenAddress = vm.envAddress("CURRENT_TOKEN_ADDRESS");
+        address oftAddress = vm.envAddress("CURRENT_OFT_ADDRESS");
+        uint32 dstEid = uint32(vm.envUint("CURRENT_DST_EID"));
+        address dstVaultAddress = vm.envAddress("CURRENT_DST_VAULT_ADDRESS");
 
         CrosschainStrategyAdapter adapter = CrosschainStrategyAdapter(payable(adapterAddress));
 

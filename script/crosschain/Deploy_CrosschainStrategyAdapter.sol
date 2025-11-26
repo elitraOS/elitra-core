@@ -20,7 +20,7 @@ contract Deploy_CrosschainStrategyAdapter is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         address owner = vm.envOr("OWNER", deployer);
-        address vault = vm.envAddress("VAULT_ADDRESS");
+        address vault = vm.envAddress("CURRENT_VAULT_ADDRESS");
 
         console2.log("=== Deployment Configuration ===");
         console2.log("Deployer:", deployer);
