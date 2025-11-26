@@ -1,0 +1,3 @@
+SPENDER_ADDRESS=$CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS
+
+cast send $APPROVE_GUARD_ADDRESS "setSpender(address,bool)" $SPENDER_ADDRESS true --rpc-url $RPC_URL --private-key $PRIVATE_KEY

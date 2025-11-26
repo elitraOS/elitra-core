@@ -2,12 +2,13 @@
 pragma solidity 0.8.28;
 
 import { ITransactionGuard } from "../../interfaces/ITransactionGuard.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title ApproveGuard
 /// @author Elitra
 /// @notice Generic guard for ERC20 approval operations.
 /// @dev Restricts approvals to specific whitelisted spenders.
-contract ApproveGuard is ITransactionGuard {
+contract ApproveGuard is ITransactionGuard, Ownable {
     
     /// @notice approve(address,uint256) selector: 0x095ea7b3
     bytes4 public constant APPROVE_SELECTOR = 0x095ea7b3;
@@ -15,13 +16,15 @@ contract ApproveGuard is ITransactionGuard {
     /// @notice Mapping of allowed spender addresses
     mapping(address spender => bool isAllowed) public whitelistedSpenders;
 
-    /// @notice Initializes the guard with a list of whitelisted spenders
-    /// @param _spenders The list of addresses allowed to spend tokens
-    constructor(address[] memory _spenders) {
-        for (uint256 i = 0; i < _spenders.length; ++i) {
-            whitelistedSpenders[_spenders[i]] = true;
-        }
+    /// @notice Initializes the guard with the owner
+    /// @param _owner The address of the owner
+    constructor(address _owner) Ownable(_owner) {
     }
+
+    function setSpender(address _spender, bool _isAllowed) external onlyOwner {
+        whitelistedSpenders[_spender] = _isAllowed;
+    }
+
 
     /// @inheritdoc ITransactionGuard
     function validate(address, bytes calldata data, uint256) external view override returns (bool) {
