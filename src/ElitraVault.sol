@@ -196,7 +196,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         return (_pendingRedeem[user].assets, _pendingRedeem[user].shares);
     }
 
-    function manageBatch(Call[] calldata calls) public override(VaultBase, IVaultBase) requiresAuth {
+    function manageBatch(Call[] calldata calls) public payable override(VaultBase, IVaultBase) requiresAuth {
         // Get asset balance before execution
         uint256 beforeBalance = IERC20(asset()).balanceOf(address(this));
 

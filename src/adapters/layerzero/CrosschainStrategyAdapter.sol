@@ -110,6 +110,9 @@ contract CrosschainStrategyAdapter is Ownable {
         uint256 _amount,
         bytes calldata _options
     ) external payable onlyVault returns (MessagingReceipt memory receipt, OFTReceipt memory oftReceipt) {
+        // pull fund from the vault 
+        IERC20(_token).safeTransferFrom(vault, address(this), _amount);
+
         // Verify the recipient is the allowed vault for this chain
         if (dstEidToVault[_dstEid] != _recipient) revert VaultNotAllowed();
 

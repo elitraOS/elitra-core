@@ -77,7 +77,7 @@ interface IVaultBase {
 
     /// @notice Execute a batch of calls
     /// @param calls The array of calls to execute
-    function manageBatch(Call[] calldata calls) external;
+    function manageBatch(Call[] calldata calls) external payable;
 
     // Emergency controls
     
