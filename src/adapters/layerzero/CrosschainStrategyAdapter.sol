@@ -19,8 +19,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 // Elitra imports
-import {IVaultBase} from "../interfaces/IVaultBase.sol";
-import {Call} from "../interfaces/IElitraVault.sol";
+import {IVaultBase} from "../../interfaces/IVaultBase.sol";
+import {Call} from "../../interfaces/IElitraVault.sol";
 
 /**
  * @title StrategyAdapter
@@ -126,10 +126,10 @@ contract StrategyAdapter is
         uint256 amountLD = OFTComposeMsgCodec.amountLD(_message);
         bytes memory composeMsg = OFTComposeMsgCodec.composeMsg(_message);
 
-        // Decode our custom compose message: (subVault, strategyCalls)
-        (address subVault, Call[] memory strategyCalls) = abi.decode(
+        // Decode our custom compose message: (subVault)
+        address subVault = abi.decode(
             composeMsg,
-            (address, Call[])
+            (address)
         );
 
         if (subVault == address(0)) revert InvalidSubVault();
@@ -139,12 +139,6 @@ contract StrategyAdapter is
         
         // 1. Transfer the received tokens to the SubVault
         IERC20(token).safeTransfer(subVault, amountLD);
-
-        // 2. Execute the strategy calls on the SubVault
-        if (strategyCalls.length > 0) {
-            // This requires StrategyAdapter to be an authorized caller (Operator/Manager) on the SubVault
-            IVaultBase(subVault).manageBatch(strategyCalls);
-        }
 
         emit StrategyExecuted(subVault, token, amountLD);
     }

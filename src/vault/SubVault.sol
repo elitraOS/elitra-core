@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { VaultBase } from "../base/VaultBase.sol";
+import { VaultBase } from "./VaultBase.sol";
 import { ISubVault } from "../interfaces/ISubVault.sol";
 import { IVaultBase } from "../interfaces/IVaultBase.sol";
 import { ITransactionGuard } from "../interfaces/ITransactionGuard.sol";

@@ -8,7 +8,7 @@ import { ITransactionGuard } from "./interfaces/ITransactionGuard.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
-import { VaultBase } from "./base/VaultBase.sol";
+import { VaultBase } from "./vault/VaultBase.sol";
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";

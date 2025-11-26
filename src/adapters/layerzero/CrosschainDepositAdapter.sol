@@ -24,8 +24,8 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 
 // Elitra imports
-import {ICrosschainDepositAdapter} from "../interfaces/ICrosschainDepositAdapter.sol";
-import {IElitraVault, Call} from "../interfaces/IElitraVault.sol";
+import {ICrosschainDepositAdapter} from "../../interfaces/IBridgeAdapter.sol";
+import {IElitraVault, Call} from "../../interfaces/IElitraVault.sol";
 
 /**
  * @title MultichainDepositAdapter
