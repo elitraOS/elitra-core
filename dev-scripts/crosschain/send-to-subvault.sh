@@ -14,21 +14,12 @@
 #    - ARB_EID
 #    - ARB_SUB_VAULT_ADDRESS
 
-set -e
 
-# Check if amount argument is provided
-if [ -z "$1" ]; then
-    echo "Usage: bash dev-scripts/crosschain/send-to-subvault.sh <amount>"
-    echo "Example: bash dev-scripts/crosschain/send-to-subvault.sh 1000000"
-    echo ""
-    echo "Amount is in smallest unit (e.g., 1000000 = 1 USDT for 6 decimals)"
-    exit 1
-fi
 
-SEND_AMOUNT=$1
+SEND_AMOUNT=1000
 
 # Source environment variables
-source env.sei.sh
+source dev-scripts/crosschain/env.sh
 
 echo "================================================================"
 echo "Sending Funds to ARB SubVault via LayerZero"
