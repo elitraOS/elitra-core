@@ -16,8 +16,23 @@ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible, IVaultBase {
     using Address for address;
 
-    /// @notice Mapping of target contracts to their guards
-    mapping(address target => ITransactionGuard guard) public override guards;
+    /// @custom:storage-location erc7201:elitra.storage.vaultbase
+    struct VaultBaseStorage {
+        mapping(address target => ITransactionGuard guard) guards;
+    }
+
+    // keccak256(abi.encode(uint256(keccak256("elitra.storage.vaultbase")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant VAULT_BASE_STORAGE_LOCATION =
+        0x28c4b052a520676d101ba86c6252692dd22c3eb0f745f659491e2b37c29b8100;
+
+    /// @notice Get the storage struct for VaultBase
+    /// @return vaultBaseStorage The storage struct
+    function _getVaultBaseStorage() private pure returns (VaultBaseStorage storage vaultBaseStorage) {
+        // solhint-disable-next-line no-inline-assembly
+        assembly {
+            vaultBaseStorage.slot := VAULT_BASE_STORAGE_LOCATION
+        }
+    }
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -45,15 +60,25 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     /// @param target The target contract address
     /// @param guard The guard contract address
     function setGuard(address target, address guard) external virtual requiresAuth {
-        guards[target] = ITransactionGuard(guard);
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        vaultBaseStorage.guards[target] = ITransactionGuard(guard);
         emit GuardUpdated(target, guard);
     }
 
     /// @notice Removes the guard for a specific target
     /// @param target The target contract address
     function removeGuard(address target) external virtual requiresAuth {
-        delete guards[target];
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        delete vaultBaseStorage.guards[target];
         emit GuardRemoved(target);
+    }
+
+    /// @notice Returns the guard for a specific target
+    /// @param target The target contract address
+    /// @return The guard contract
+    function guards(address target) external view override returns (ITransactionGuard) {
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        return vaultBaseStorage.guards[target];
     }
 
     /// @notice Execute a call to a target contract
@@ -66,13 +91,16 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
         requiresAuth
         returns (bytes memory result)
     {
-        ITransactionGuard guard = guards[target];
-        require(address(guard) != address(0), Errors.TransactionValidationFailed(target));
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        ITransactionGuard guard = vaultBaseStorage.guards[target];
         
-        require(
-            guard.validate(msg.sender, data, value),
-            Errors.TransactionValidationFailed(target)
-        );
+        if (address(guard) == address(0)) {
+            revert Errors.TransactionValidationFailed(target);
+        }
+        
+        if (!guard.validate(msg.sender, data, value)) {
+            revert Errors.TransactionValidationFailed(target);
+        }
 
         result = target.functionCallWithValue(data, value);
     }
