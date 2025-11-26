@@ -47,13 +47,9 @@ contract SetupRoles is Script {
         oracleHook.setAuthority(Authority(rolesAuthorityAddress));
         console2.log("   Oracle hook authority set to:", rolesAuthorityAddress);
 
-        // allow broadcast address, to call the updateMaxPercentageChange function
+        // allow broadcast address, to call the updateBalance function
         authority.setUserRole(deployer, ORACLE_ROLE, true);
         console2.log("   Deployer assigned ORACLE_ROLE");
-
-        // allow calling the updateMaxPercentageChange function
-        authority.setRoleCapability(ORACLE_ROLE, oracleHookAddress, ManualBalanceUpdateHook.updateMaxPercentageChange.selector, true);
-        console2.log("   Oracle hook can call updateMaxPercentageChange()");
 
 
         // Give deployer the MANAGER_ROLE

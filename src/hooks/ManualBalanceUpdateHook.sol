@@ -55,12 +55,6 @@ contract ManualBalanceUpdateHook is IBalanceUpdateHook, Auth {
         // Could be used for: logging, notifications, external integrations, etc.
     }
 
-    /// @inheritdoc IBalanceUpdateHook
-    function updateMaxPercentageChange(uint256 newThreshold) external requiresAuth {
-        require(newThreshold < MAX_PERCENTAGE_THRESHOLD, Errors.InvalidMaxPercentage());
-        emit MaxPercentageUpdated(maxPercentageChange, newThreshold);
-        maxPercentageChange = newThreshold;
-    }
 
     /// @dev Calculate percentage change between two prices
     function _calculatePercentageChange(uint256 oldPrice, uint256 newPrice) private pure returns (uint256) {
