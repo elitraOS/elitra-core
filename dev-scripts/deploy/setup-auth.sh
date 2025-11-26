@@ -52,7 +52,7 @@ if [ -z "$ROLES_AUTHORITY_ADDRESS" ] || [ "$ROLES_AUTHORITY_ADDRESS" = "0x000000
 fi
 
 # Run the setup script
-forge script script/SetupRoles.sol \
+forge script script/deploy/SetupRoles.sol \
     --rpc-url $RPC_URL \
     --broadcast \
     -vvvv

@@ -6,8 +6,6 @@
 
 set -e
 
-# Source environment variables
-source env.sei.sh
 
 echo "================================================================"
 echo "Deploying RolesAuthority"
@@ -32,16 +30,15 @@ echo ""
 echo "Deploying RolesAuthority..."
 echo ""
 
-forge script script/DeployAuthority.s.sol \
+forge script script/deploy/DeployAuthority.s.sol \
     --rpc-url $RPC_URL \
     --broadcast \
     --compiler-version 0.8.28 \
     --evm-version "cancun" \
     --verify \
-    --verifier blockscout \
-    --verifier-url https://seitrace.com/pacific-1/api \
-    --etherscan-api-key dummy \
-    --chain-id 1329 \
+    --verifier $VERIFIER_TYPE \
+    --verifier-url $VERIFIER_URL \
+    --etherscan-api-key $ETHERSCAN_API_KEY \
     --force \
     -vvvv
 

@@ -5,8 +5,8 @@ import "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { RolesAuthority } from "@solmate/auth/authorities/RolesAuthority.sol";
 import { Authority } from "@solmate/auth/Auth.sol";
-import { ElitraVault } from "src/ElitraVault.sol";
-import { ManualBalanceUpdateHook } from "src/hooks/ManualBalanceUpdateHook.sol";
+import { ElitraVault } from "../../src/ElitraVault.sol";
+import { ManualBalanceUpdateHook } from "../../src/hooks/ManualBalanceUpdateHook.sol";
 /**
  * @title SetupRoles
  * @notice Configures roles and permissions for Elitra Vault

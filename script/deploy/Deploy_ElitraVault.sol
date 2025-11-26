@@ -3,9 +3,9 @@ pragma solidity 0.8.28;
 
 import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
-import { ElitraVault } from "../src/ElitraVault.sol";
-import { ManualBalanceUpdateHook } from "../src/hooks/ManualBalanceUpdateHook.sol";
-import { HybridRedemptionHook } from "../src/hooks/HybridRedemptionHook.sol";
+import { ElitraVault } from "../../src/ElitraVault.sol";
+import { ManualBalanceUpdateHook } from "../../src/hooks/ManualBalanceUpdateHook.sol";
+import { HybridRedemptionHook } from "../../src/hooks/HybridRedemptionHook.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 

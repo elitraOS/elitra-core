@@ -6,10 +6,11 @@
 
 ## Deploying the vault
 
-1.  bash dev-scripts/deploy-authority.sh
-2.  bash dev-scripts/deploy.sh
-3.  bash dev-scripts/setup-auth.sh
-4.  bash dev-scripts/deploy-crosschain-adapter.sh
+1.  bash dev-scripts/deploy/vault.sh
+2.  bash dev-scripts/deploy/authority.sh
+3.  bash dev-scripts/deploy/setup-auth.sh
+
+> Check crosschain env.sh, to see which chain is currently enable 4. bash dev-scripts/deploy-crosschain-adapter.sh
 
 ## Deploy subvault
 

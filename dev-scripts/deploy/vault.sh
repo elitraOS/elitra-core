@@ -8,12 +8,6 @@
 set -e
 
 
-# Source environment variables
-source env.sei.sh
-
-
-
-
 
 echo "================================================================"
 echo "Deploying Elitra Vault for asset: $ASSET_ADDRESS"
@@ -32,7 +26,7 @@ fi
 
 
 # Run the deployment script
-forge script script/Deploy_ElitraVault.sol \
+forge script script/deploy/Deploy_ElitraVault.sol \
     --rpc-url $RPC_URL \
     --broadcast \
     --compiler-version 0.8.28 \
