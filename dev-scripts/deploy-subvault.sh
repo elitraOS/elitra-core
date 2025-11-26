@@ -14,23 +14,6 @@
 
 set -e
 
-# Check if env file argument is provided
-if [ -z "$1" ]; then
-    echo "Usage: bash dev-scripts/deploy-subvault.sh <env-file>"
-    echo "Example: bash dev-scripts/deploy-subvault.sh env.arbitrum.sh"
-    exit 1
-fi
-
-ENV_FILE=$1
-
-# Source environment variables
-if [ ! -f "$ENV_FILE" ]; then
-    echo "Error: Environment file '$ENV_FILE' not found"
-    exit 1
-fi
-
-source "$ENV_FILE"
-
 echo "================================================================"
 echo "Deploying SubVault and CrosschainStrategyAdapter"
 echo "================================================================"
@@ -80,12 +63,26 @@ FORGE_CMD="forge script script/Deploy_SubVault.sol \
 
 # Add verification if VERIFIER_URL is set
 if [ -n "$VERIFIER_URL" ]; then
+    # Default to etherscan if not specified
+    VERIFIER_TYPE=${VERIFIER_TYPE:-etherscan}
+    
+    if [ -z "$ETHERSCAN_API_KEY" ]; then
+        if [ "$VERIFIER_TYPE" == "etherscan" ]; then
+            echo "Warning: No ETHERSCAN_API_KEY provided. Verification might fail."
+        fi
+        ETHERSCAN_API_KEY=dummy
+    fi
+    
     FORGE_CMD="$FORGE_CMD \
     --verify \
-    --verifier blockscout \
+    --verifier $VERIFIER_TYPE \
     --verifier-url $VERIFIER_URL \
-    --etherscan-api-key dummy"
+    --etherscan-api-key $ETHERSCAN_API_KEY"
 fi
+
+echo "Executing Forge command:"
+echo "$FORGE_CMD"
+echo ""
 
 eval $FORGE_CMD
 
