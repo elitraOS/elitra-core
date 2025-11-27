@@ -59,7 +59,7 @@ echo "Deploying SubVault and CrosschainStrategyAdapter..."
 echo ""
 
 # Build forge command
-FORGE_CMD="forge script script/Deploy_SubVault.sol \
+FORGE_CMD="forge script script/crosschain/Deploy_SubVault.sol \
     --rpc-url $RPC_URL \
     --broadcast \
     --compiler-version 0.8.28 \
