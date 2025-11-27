@@ -28,8 +28,8 @@ contract Deploy_SubVault is Script {
         address deployer = vm.addr(deployerPrivateKey);
         address owner = vm.envOr("OWNER", deployer);
         address proxyAdmin = vm.envOr("PROXY_ADMIN", deployer);
-        // Fallback to TOKEN_ADDRESS if WRAPPED_NATIVE_ADDRESS is not set
-        address wrappedNative = vm.envOr("WRAPPED_NATIVE_ADDRESS", vm.envAddress("TOKEN_ADDRESS"));
+        // Fallback to TOKEN_ADDRESS or ASSET_ADDRESS if WRAPPED_NATIVE_ADDRESS is not set
+        address wrappedNative = vm.envOr("WRAPPED_NATIVE_ADDRESS", vm.envOr("TOKEN_ADDRESS", vm.envAddress("ASSET_ADDRESS")));
 
         console2.log("Deployer:", deployer);
         console2.log("Owner:", owner);

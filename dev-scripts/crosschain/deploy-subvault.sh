@@ -41,6 +41,11 @@ if [ -z "$CHAIN_ID" ]; then
     exit 1
 fi
 
+if [ -z "$ASSET_ADDRESS" ] && [ -z "$TOKEN_ADDRESS" ]; then
+    echo "Error: ASSET_ADDRESS or TOKEN_ADDRESS not set. Source your config file first."
+    exit 1
+fi
+
 # Optional: Set owner (defaults to deployer)
 export OWNER=${OWNER:-$DEPLOYER_ADDRESS}
 export PROXY_ADMIN=${PROXY_ADMIN:-$DEPLOYER_ADDRESS}

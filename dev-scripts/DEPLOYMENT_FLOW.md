@@ -16,6 +16,9 @@
 
 ## Deploying the guard
 
+1. bash dev-scripts/deploy/guard.sh
+2. bash dev-scripts/deploy/setup-guard.sh
+
 ## Strategy setup
 
 1. bash dev-scripts/deploy/crosschain-strategy-adapter.sh
