@@ -13,14 +13,15 @@ export REDEMPTION_HOOK_ADDRESS=0x001b4382749594400210eA3D3b837962Eab97DF4
 ### - Guard Deployment info --
 export APPROVE_GUARD_ADDRESS=0xc0C3b233B13Da35410b9cF7600AD68bE4aCE44E5
 
-
-### -- Hubchain LZ adapter Deployment info --
 export OFT_ADDRESS=0x56fe74a2e3b484b921c447357203431a3485cc60
-
 export CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS=0x01a12D78432161A7CeDEEd8afFfC856560f9a44f
 
-##### Crosschain Adapter Deployment info #####
-### -- LZ spoke chain configuration --
+
+### -- Hubchain LZ adapter Deployment info --
 export ARB_EID=30110
 export ARB_SUB_VAULT_ADDRESS=0x37Cf2682be3D4149123839d6F6154aEbc7978dA4
 export ARB_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS=0xDde9F6249593be0D5A9547534cdDA697dBfBdDFc
+
+
+#### -- Ploygygon
+export POLYGON_EID=30109

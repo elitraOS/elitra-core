@@ -25,11 +25,11 @@ echo "================================================================"
 echo "Sending Funds to ARB SubVault via LayerZero"
 echo "================================================================"
 echo "RPC URL: $RPC_URL"
-echo "Vault: $VAULT_ADDRESS"
-echo "Asset: $ASSET_ADDRESS"
-echo "Adapter: $CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS"
-echo "Destination EID: $ARB_EID"
-echo "Destination Vault: $ARB_SUB_VAULT_ADDRESS"
+echo "Vault: $CURRENT_VAULT_ADDRESS"
+echo "Asset: $CURRENT_TOKEN_ADDRESS"
+echo "Adapter: $CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS"
+echo "Destination EID: $CURRENT_DST_EID"
+echo "Destination Vault: $CURRENT_DST_VAULT_ADDRESS"
 echo "Send Amount: $SEND_AMOUNT"
 echo "================================================================"
 
@@ -39,18 +39,18 @@ if [ -z "$PRIVATE_KEY" ]; then
     exit 1
 fi
 
-if [ -z "$VAULT_ADDRESS" ]; then
+if [ -z "$CURRENT_VAULT_ADDRESS" ]; then
     echo "Error: VAULT_ADDRESS not set. Source your config file first."
     exit 1
 fi
 
-if [ -z "$CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS" ]; then
+if [ -z "$CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS" ]; then
     echo "Error: CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS not set."
     exit 1
 fi
 
-if [ -z "$ARB_EID" ] || [ -z "$ARB_SUB_VAULT_ADDRESS" ]; then
-    echo "Error: ARB_EID or ARB_SUB_VAULT_ADDRESS not set."
+if [ -z "$CURRENT_DST_EID" ] || [ -z "$CURRENT_DST_VAULT_ADDRESS" ]; then
+    echo "Error: CURRENT_DST_EID or CURRENT_DST_VAULT_ADDRESS not set."
     exit 1
 fi
 

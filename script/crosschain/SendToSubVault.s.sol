@@ -123,10 +123,6 @@ contract SendToSubVault is Script {
         console2.log("\n=== After Send ===");
         console2.log("Vault Asset Balance:", vaultBalanceAfter);
         console2.log("Tokens Sent:", vaultBalance - vaultBalanceAfter);
-
-        console2.log("\n=== Send Complete ===");
-        console2.log("Tokens are being bridged to Arbitrum SubVault");
-        console2.log("Check destination: https://arbiscan.io/address/", dstVault);
     }
 
     function test() public {
