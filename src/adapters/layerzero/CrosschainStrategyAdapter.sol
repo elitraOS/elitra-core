@@ -5,6 +5,7 @@ pragma solidity ^0.8.28;
 import {IOFT, SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
 import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oft-evm/contracts/OFTCore.sol";
 import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import {IWETH9} from "../../interfaces/IWETH9.sol";
 
 // OpenZeppelin imports
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -24,6 +25,9 @@ contract CrosschainStrategyAdapter is Ownable {
 
     /// @notice The vault address that is allowed to call sendStrategy
     address public vault;
+
+    /// @notice The wrapped native token address (e.g. WSEI)
+    address public immutable wrappedNative;
 
     /// @notice Mapping of token address to its corresponding OFT contract address
     mapping(address token => address oft) public tokenToOft;
@@ -84,11 +88,13 @@ contract CrosschainStrategyAdapter is Ownable {
      * @notice Constructor
      * @param _owner Contract owner
      * @param _vault The vault address allowed to send messages
+     * @param _wrappedNative The address of the wrapped native token (e.g., WSEI)
      */
-    constructor(address _owner, address _vault) Ownable(_owner) {
+    constructor(address _owner, address _vault, address _wrappedNative) Ownable(_owner) {
         if (_vault == address(0)) revert InvalidVault();
         
         vault = _vault;
+        wrappedNative = _wrappedNative;
     }
 
     // ========================================= CORE FUNCTIONS =========================================
@@ -133,18 +139,29 @@ contract CrosschainStrategyAdapter is Ownable {
         // Quote the messaging fee
         MessagingFee memory fee = IOFT(oft).quoteSend(sendParam, false);
 
-        if (msg.value < fee.nativeFee) revert InvalidFee();
+        if (_token == wrappedNative) {
+            // Unwrap WSEI to Native SEI
+            IWETH9(_token).withdraw(_amount);
+            
+            // Ensure we have enough native balance (fee from msg.value + amount from unwrap)
+            if (address(this).balance < fee.nativeFee + _amount) revert InvalidFee();
 
-        // Approve OFT to spend tokens
-        IERC20(_token).safeIncreaseAllowance(oft, _amount);
+            // Send Native SEI (fee + amount)
+            (receipt, oftReceipt) = IOFT(oft).send{value: fee.nativeFee + _amount}(sendParam, fee, payable(msg.sender));
+        } else {
+            if (msg.value < fee.nativeFee) revert InvalidFee();
 
-        // Send tokens
-        (receipt, oftReceipt) = IOFT(oft).send{value: fee.nativeFee}(sendParam, fee, payable(msg.sender));
+            // Approve OFT to spend tokens
+            IERC20(_token).safeIncreaseAllowance(oft, _amount);
 
-        // Reset allowance if any remaining
-        uint256 remaining = IERC20(_token).allowance(address(this), oft);
-        if (remaining > 0) {
-            IERC20(_token).safeDecreaseAllowance(oft, remaining);
+            // Send tokens
+            (receipt, oftReceipt) = IOFT(oft).send{value: fee.nativeFee}(sendParam, fee, payable(msg.sender));
+
+            // Reset allowance if any remaining
+            uint256 remaining = IERC20(_token).allowance(address(this), oft);
+            if (remaining > 0) {
+                IERC20(_token).safeDecreaseAllowance(oft, remaining);
+            }
         }
 
         emit MessageSent(_dstEid, _recipient, _token, _amount);

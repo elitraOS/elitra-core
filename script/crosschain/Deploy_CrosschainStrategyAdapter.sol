@@ -13,7 +13,8 @@ import { CrosschainStrategyAdapter } from "../../src/adapters/layerzero/Crosscha
  * Required environment variables:
  * - PRIVATE_KEY: Deployer private key
  * - OWNER: (optional) Owner address, defaults to deployer
- * - VAULT_ADDRESS: The vault address that is allowed to call sendToVault
+ * - CURRENT_VAULT_ADDRESS: The vault address that is allowed to call sendToVault
+ * - WRAPPED_NATIVE: The wrapped native token address (e.g., WSEI on SEI)
  */
 contract Deploy_CrosschainStrategyAdapter is Script {
     function run() public {
@@ -21,16 +22,18 @@ contract Deploy_CrosschainStrategyAdapter is Script {
         address deployer = vm.addr(deployerPrivateKey);
         address owner = vm.envOr("OWNER", deployer);
         address vault = vm.envAddress("CURRENT_VAULT_ADDRESS");
+        address wrappedNative = vm.envAddress("WRAPPED_NATIVE");
 
         console2.log("=== Deployment Configuration ===");
         console2.log("Deployer:", deployer);
         console2.log("Owner:", owner);
         console2.log("Vault:", vault);
+        console2.log("Wrapped Native:", wrappedNative);
 
         vm.startBroadcast(deployerPrivateKey);
 
         console2.log("\nDeploying CrosschainStrategyAdapter...");
-        CrosschainStrategyAdapter adapter = new CrosschainStrategyAdapter(owner, vault);
+        CrosschainStrategyAdapter adapter = new CrosschainStrategyAdapter(owner, vault, wrappedNative);
         console2.log("CrosschainStrategyAdapter:", address(adapter));
 
         vm.stopBroadcast();
@@ -39,6 +42,7 @@ contract Deploy_CrosschainStrategyAdapter is Script {
         console2.log("CrosschainStrategyAdapter:", address(adapter));
         console2.log("Owner:", owner);
         console2.log("Vault:", vault);
+        console2.log("Wrapped Native:", wrappedNative);
 
         console2.log("\n=== Next Steps ===");
         console2.log("1. Save the deployed address to your config file");
