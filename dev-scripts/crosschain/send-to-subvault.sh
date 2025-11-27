@@ -19,7 +19,7 @@
 SEND_AMOUNT=10000000000000000
 
 # Source environment variables
-source dev-scripts/crosschain/env.sh
+source dev-scripts/current-env.sh
 
 echo "================================================================"
 echo "Sending Funds to ARB SubVault via LayerZero"

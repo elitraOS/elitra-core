@@ -1,4 +1,4 @@
-source  dev-scripts/crosschain/env.sh
+source  dev-scripts/current-env.sh
 
 echo "CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS: $CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS"
 echo "CURRENT_DST_EID: $CURRENT_DST_EID"

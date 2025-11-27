@@ -14,7 +14,7 @@
 
 set -e
 
-source env.sh
+source dev-scripts/current-env.sh
 
 echo "================================================================"
 echo "Deploying SubVault and CrosschainStrategyAdapter"
