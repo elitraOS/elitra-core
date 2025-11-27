@@ -16,7 +16,7 @@
 
 
 
-SEND_AMOUNT=1000
+SEND_AMOUNT=10000000000000000
 
 # Source environment variables
 source dev-scripts/crosschain/env.sh
