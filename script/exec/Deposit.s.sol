@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
 
 /**
  * @title Deposit
@@ -29,7 +29,7 @@ contract Deposit is Script {
         address receiver = vm.envOr("RECEIVER", depositor);
 
         IERC20 asset = IERC20(assetAddress);
-        IERC4626 vault = IERC4626(vaultAddress);
+        IERC4626Upgradeable vault = IERC4626Upgradeable(vaultAddress);
 
         console2.log("=== Deposit Configuration ===");
         console2.log("Depositor:", depositor);

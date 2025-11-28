@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
 import { IBalanceUpdateHook } from "./IBalanceUpdateHook.sol";
 import { IRedemptionHook } from "./IRedemptionHook.sol";
 import { IVaultBase, Call } from "./IVaultBase.sol";
 
 /// @title IElitraVault
 /// @notice Interface for ElitraVault with adapter integration
-interface IElitraVault is IERC4626, IVaultBase {
+interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     /// @notice Pending redemption data structure
     struct PendingRedeem {
         uint256 shares;
@@ -21,13 +21,7 @@ interface IElitraVault is IERC4626, IVaultBase {
     event VaultPausedDueToThreshold(uint256 indexed timestamp, uint256 oldPPS, uint256 newPPS);
     event BalanceUpdateHookUpdated(address indexed oldHook, address indexed newHook);
     event RedemptionHookUpdated(address indexed oldHook, address indexed newHook);
-    event RedeemRequest(
-        address indexed receiver,
-        address indexed owner,
-        uint256 assets,
-        uint256 shares,
-        bool instant
-    );
+    event RedeemRequest(address indexed receiver, address indexed owner, uint256 assets, uint256 shares, bool instant);
     event RequestFulfilled(address indexed receiver, uint256 shares, uint256 assets);
     event RequestCancelled(address indexed receiver, uint256 shares, uint256 assets);
 

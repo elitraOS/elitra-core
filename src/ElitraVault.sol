@@ -13,9 +13,10 @@ import { VaultBase } from "./vault/VaultBase.sol";
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
+import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
 
 /// @title ElitraVault - Vault with pluggable oracle and redemption adapters
 /// @notice ERC-4626 vault that delegates validation logic to adapters
@@ -40,7 +41,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
     uint256 public totalPendingAssets;
 
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -54,10 +54,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         IRedemptionHook _redemptionHook,
         string memory _name,
         string memory _symbol
-    ) public initializer {
+    )
+        public
+        initializer
+    {
         __Context_init();
         __ERC20_init(_name, _symbol);
-        __ERC4626_init(_asset);
+        __ERC4626_init(IERC20Upgradeable(address(_asset)));
         __VaultBase_init(_owner);
 
         require(address(_balanceUpdateHook) != address(0), Errors.ZeroAddress());
@@ -77,10 +80,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
 
         // 2. Pull validation from balance update hook (read-only)
         (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
-            lastPricePerShare,
-            totalSupply(),
-            IERC20(asset()).balanceOf(address(this)),
-            newAggregatedBalance
+            lastPricePerShare, totalSupply(), IERC20(asset()).balanceOf(address(this)), newAggregatedBalance
         );
 
         // 3. Check if should pause
@@ -99,7 +99,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
     }
 
-
     function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
         _updateBalance(newAggregatedBalance);
     }
@@ -114,11 +113,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     // ========================================= REDEMPTION INTEGRATION =========================================
 
     /// @inheritdoc IElitraVault
-    function requestRedeem(uint256 shares, address receiver, address owner)
-        public
-        whenNotPaused
-        returns (uint256)
-    {
+    function requestRedeem(uint256 shares, address receiver, address owner) public whenNotPaused returns (uint256) {
         require(shares > 0, Errors.SharesAmountZero());
         require(owner == msg.sender, Errors.NotSharesOwner());
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
@@ -126,9 +121,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         uint256 assets = previewRedeem(shares);
 
         // Ask strategy how to handle this redemption
-        (RedemptionMode mode, uint256 actualAssets) = redemptionHook.beforeRedeem(
-            this, shares, assets, owner, receiver
-        );
+        (RedemptionMode mode, uint256 actualAssets) = redemptionHook.beforeRedeem(this, shares, assets, owner, receiver);
 
         if (mode == RedemptionMode.INSTANT) {
             _withdraw(owner, receiver, owner, actualAssets, shares);
@@ -206,12 +199,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         // Update aggregated balance based on vault asset balance change
         uint256 afterBalance = IERC20(asset()).balanceOf(address(this));
         if (afterBalance != beforeBalance) {
-            uint256 balanceChange = afterBalance > beforeBalance
-                ? afterBalance - beforeBalance
-                : beforeBalance - afterBalance;
+            uint256 balanceChange =
+                afterBalance > beforeBalance ? afterBalance - beforeBalance : beforeBalance - afterBalance;
 
             uint256 newAggregatedUnderlyingBalances = afterBalance > beforeBalance
-                ? aggregatedUnderlyingBalances - balanceChange // funds came In, -> extenal balances when down
+                ? aggregatedUnderlyingBalances - balanceChange  // funds came In, -> extenal balances when down
                 : aggregatedUnderlyingBalances + balanceChange; // funds went out, -> extenal balances when up
 
             _updateBalance(newAggregatedUnderlyingBalances);
@@ -220,67 +212,90 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
 
     // ========================================= ERC4626 OVERRIDES =========================================
 
-    function totalAssets() public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function totalAssets() public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
         return IERC20(asset()).balanceOf(address(this)) + aggregatedUnderlyingBalances;
     }
 
-
-    function deposit(uint256 assets, address receiver)
+    function deposit(
+        uint256 assets,
+        address receiver
+    )
         public
-        override(ERC4626Upgradeable, IERC4626)
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
         whenNotPaused
         returns (uint256)
     {
         return super.deposit(assets, receiver);
     }
 
-    function mint(uint256 shares, address receiver)
+    function mint(
+        uint256 shares,
+        address receiver
+    )
         public
-        override(ERC4626Upgradeable, IERC4626)
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
         whenNotPaused
         returns (uint256)
     {
         return super.mint(shares, receiver);
     }
 
-    function withdraw(uint256, address, address)
+    function withdraw(
+        uint256,
+        address,
+        address
+    )
         public
-        override(ERC4626Upgradeable, IERC4626)
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
         whenNotPaused
         returns (uint256)
     {
         revert Errors.UseRequestRedeem();
     }
 
-    function redeem(uint256 shares, address receiver, address owner)
+    function redeem(
+        uint256 shares,
+        address receiver,
+        address owner
+    )
         public
-        override(ERC4626Upgradeable, IERC4626)
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
         whenNotPaused
         returns (uint256)
     {
         return requestRedeem(shares, receiver, owner);
     }
 
-    function _update(address from, address to, uint256 value) internal override whenNotPaused {
-        super._update(from, to, value);
+    function _beforeTokenTransfer(address from, address to, uint256 amount) internal override whenNotPaused {
+        super._beforeTokenTransfer(from, to, amount);
     }
 
-    function maxDeposit(address receiver) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function maxDeposit(address receiver)
+        public
+        view
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
+        returns (uint256)
+    {
         if (paused()) return 0;
         return super.maxDeposit(receiver);
     }
 
-    function maxMint(address receiver) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function maxMint(address receiver) public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
         if (paused()) return 0;
         return super.maxMint(receiver);
     }
 
-    function maxWithdraw(address owner) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function maxWithdraw(address owner)
+        public
+        view
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
+        returns (uint256)
+    {
         if (paused()) return 0;
         return super.maxWithdraw(owner);
     }
 
-    function maxRedeem(address owner) public view override(ERC4626Upgradeable, IERC4626) returns (uint256) {
+    function maxRedeem(address owner) public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
         if (paused()) return 0;
         return super.maxRedeem(owner);
     }

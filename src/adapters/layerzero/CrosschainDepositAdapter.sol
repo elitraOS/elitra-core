@@ -2,30 +2,37 @@
 pragma solidity 0.8.28;
 
 // LayerZero Official Upgradeable OApp imports
-import {OAppUpgradeable, MessagingFee, MessagingReceipt, Origin} from
-    "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
-import {OAppOptionsType3Upgradeable} from
-    "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
-import {IOAppComposer} from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppComposer.sol";
-import {OFTComposeMsgCodec} from "@layerzerolabs/oapp-evm/contracts/oft/libs/OFTComposeMsgCodec.sol";
-import {IOFT, SendParam, OFTReceipt} from "@layerzerolabs/oapp-evm/contracts/oft/interfaces/IOFT.sol";
-import {ILayerZeroComposer} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
+import {
+    OAppUpgradeable,
+    MessagingFee,
+    MessagingReceipt,
+    Origin
+} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/OAppUpgradeable.sol";
+import {
+    OAppOptionsType3Upgradeable
+} from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
+import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppComposer.sol";
+import { OFTComposeMsgCodec } from "@layerzerolabs/oapp-evm/contracts/oft/libs/OFTComposeMsgCodec.sol";
+import { IOFT, SendParam, OFTReceipt } from "@layerzerolabs/oapp-evm/contracts/oft/interfaces/IOFT.sol";
+import { ILayerZeroComposer } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroComposer.sol";
 
 // OpenZeppelin Upgradeable imports
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
-import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {
+    ReentrancyGuardUpgradeable
+} from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
+import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
 // OpenZeppelin standard imports
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {Address} from "@openzeppelin/contracts/utils/Address.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 
 // Elitra imports
-import {ICrosschainDepositAdapter} from "../../interfaces/ICrosschainDepositAdapter.sol";
-import {IElitraVault, Call} from "../../interfaces/IElitraVault.sol";
+import { ICrosschainDepositAdapter } from "../../interfaces/ICrosschainDepositAdapter.sol";
+import { IElitraVault, Call } from "../../interfaces/IElitraVault.sol";
 
 /**
  * @title MultichainDepositAdapter
@@ -82,12 +89,13 @@ contract CrosschainDepositAdapter is
         require(_owner != address(0), "Invalid owner");
 
         __OApp_init(_owner);
-        __Ownable_init(_owner);
+        __Ownable_init();
         __ReentrancyGuard_init();
         __Pausable_init();
         __AccessControl_init();
         __UUPSUpgradeable_init();
 
+        _transferOwnership(_owner);
         _grantRole(DEFAULT_ADMIN_ROLE, _owner);
         _grantRole(OPERATOR_ROLE, _owner);
     }
@@ -116,7 +124,13 @@ contract CrosschainDepositAdapter is
         bytes calldata _message,
         address, // executor
         bytes calldata // extraData
-    ) external payable override(ILayerZeroComposer) whenNotPaused nonReentrant {
+    )
+        external
+        payable
+        override(ILayerZeroComposer)
+        whenNotPaused
+        nonReentrant
+    {
         // Only accept compose messages from the LayerZero endpoint
         require(msg.sender == address(endpoint), "Only endpoint");
 
@@ -129,10 +143,7 @@ contract CrosschainDepositAdapter is
         bytes memory composeMsg = OFTComposeMsgCodec.composeMsg(_message);
 
         // Decode our custom compose message: (vault, receiver, zapCalls)
-        (address vault, address receiver, Call[] memory zapCalls) = abi.decode(
-            composeMsg,
-            (address, address, Call[])
-        );
+        (address vault, address receiver, Call[] memory zapCalls) = abi.decode(composeMsg, (address, address, Call[]));
 
         // // Validate
         // require(supportedVaults[vault], "Vault not supported");
@@ -164,7 +175,10 @@ contract CrosschainDepositAdapter is
         address token,
         uint256 amount,
         Call[] memory zapCalls
-    ) internal returns (uint256 shares) {
+    )
+        internal
+        returns (uint256 shares)
+    {
         // If there are zap calls, execute them
         if (zapCalls.length > 0) {
             uint256 balanceBefore = IERC20(IElitraVault(vault).asset()).balanceOf(address(this));
@@ -198,7 +212,12 @@ contract CrosschainDepositAdapter is
         address token,
         uint256 amount,
         Call[] calldata zapCalls
-    ) external override onlySelf returns (uint256 shares) {
+    )
+        external
+        override
+        onlySelf
+        returns (uint256 shares)
+    {
         return _processDeposit(depositId, vault, receiver, token, amount, zapCalls);
     }
 
@@ -206,9 +225,7 @@ contract CrosschainDepositAdapter is
      * @notice Execute batch of zap operations
      * @inheritdoc ICrosschainDepositAdapter
      */
-    function manageBatch(
-        Call[] calldata calls
-    ) external override onlySelf {
+    function manageBatch(Call[] calldata calls) external override onlySelf {
         for (uint256 i = 0; i < calls.length; i++) {
             calls[i].target.functionCallWithValue(calls[i].data, calls[i].value);
         }
@@ -222,7 +239,12 @@ contract CrosschainDepositAdapter is
         address vault,
         address receiver,
         uint256 amount
-    ) external override onlySelf returns (uint256 shares) {
+    )
+        external
+        override
+        onlySelf
+        returns (uint256 shares)
+    {
         return _depositToVault(vault, receiver, amount);
     }
 
@@ -242,9 +264,8 @@ contract CrosschainDepositAdapter is
         DepositRecord storage record = depositRecords[depositId];
 
         require(
-            record.status == DepositStatus.ZapFailed ||
-            record.status == DepositStatus.DepositFailed ||
-            record.status == DepositStatus.RefundFailed,
+            record.status == DepositStatus.ZapFailed || record.status == DepositStatus.DepositFailed
+                || record.status == DepositStatus.RefundFailed,
             "Not eligible for refund"
         );
 
@@ -260,13 +281,13 @@ contract CrosschainDepositAdapter is
             DepositRecord storage record = depositRecords[depositIds[i]];
 
             if (
-                record.status == DepositStatus.ZapFailed ||
-                record.status == DepositStatus.DepositFailed ||
-                record.status == DepositStatus.RefundFailed
+                record.status == DepositStatus.ZapFailed || record.status == DepositStatus.DepositFailed
+                    || record.status == DepositStatus.RefundFailed
             ) {
                 try this.safeAttemptRefund(depositIds[i]) {
-                    // Refund attempted
-                } catch {
+                // Refund attempted
+                }
+                    catch {
                     // Continue to next deposit
                 }
             }
@@ -285,7 +306,10 @@ contract CrosschainDepositAdapter is
         uint256 amount,
         address vault,
         bytes32 guid
-    ) internal returns (uint256 depositId) {
+    )
+        internal
+        returns (uint256 depositId)
+    {
         depositId = totalDeposits;
 
         depositRecords[depositId] = DepositRecord({
@@ -316,16 +340,10 @@ contract CrosschainDepositAdapter is
         emit DepositStatusUpdated(depositId, oldStatus, newStatus);
     }
 
-
-
     /**
      * @notice Internal deposit to vault
      */
-    function _depositToVault(
-        address vault,
-        address receiver,
-        uint256 amount
-    ) internal returns (uint256 shares) {
+    function _depositToVault(address vault, address receiver, uint256 amount) internal returns (uint256 shares) {
         address asset = IElitraVault(vault).asset();
 
         // Approve vault to spend tokens
@@ -360,7 +378,7 @@ contract CrosschainDepositAdapter is
             dstEid: record.srcEid,
             to: OFTComposeMsgCodec.addressToBytes32(record.user),
             amountLD: record.amountIn,
-            minAmountLD: (record.amountIn * 9900) / 10000, // 1% slippage
+            minAmountLD: (record.amountIn * 9900) / 10_000, // 1% slippage
             extraOptions: "",
             composeMsg: "",
             oftCmd: ""
@@ -376,8 +394,9 @@ contract CrosschainDepositAdapter is
         IERC20(record.tokenIn).forceApprove(oft, record.amountIn);
 
         // Send tokens back to user on source chain
-        try IOFT(oft).send{value: fee.nativeFee}(sendParam, fee, payable(address(this)))
-            returns (MessagingReceipt memory receipt, OFTReceipt memory) {
+        try IOFT(oft).send{ value: fee.nativeFee }(sendParam, fee, payable(address(this))) returns (
+            MessagingReceipt memory receipt, OFTReceipt memory
+        ) {
             _updateDepositStatus(depositId, DepositStatus.RefundSent);
             emit RefundSent(depositId, record.user, record.amountIn, record.srcEid);
         } catch {
@@ -468,7 +487,7 @@ contract CrosschainDepositAdapter is
     /**
      * @notice Authorize upgrade (required by UUPS)
      */
-    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner { }
 
     // ========================================= VIEW FUNCTIONS =========================================
 
@@ -489,7 +508,10 @@ contract CrosschainDepositAdapter is
     /**
      * @inheritdoc ICrosschainDepositAdapter
      */
-    function getFailedDeposits(uint256 startId, uint256 limit)
+    function getFailedDeposits(
+        uint256 startId,
+        uint256 limit
+    )
         external
         view
         override
@@ -501,9 +523,8 @@ contract CrosschainDepositAdapter is
         for (uint256 i = startId; i < totalDeposits && count < limit; i++) {
             DepositRecord storage record = depositRecords[i];
             if (
-                record.status == DepositStatus.ZapFailed ||
-                record.status == DepositStatus.DepositFailed ||
-                record.status == DepositStatus.RefundFailed
+                record.status == DepositStatus.ZapFailed || record.status == DepositStatus.DepositFailed
+                    || record.status == DepositStatus.RefundFailed
             ) {
                 tempIds[count] = i;
                 count++;
@@ -537,7 +558,7 @@ contract CrosschainDepositAdapter is
             dstEid: record.srcEid,
             to: OFTComposeMsgCodec.addressToBytes32(record.user),
             amountLD: record.amountIn,
-            minAmountLD: (record.amountIn * 9900) / 10000, // 1% slippage
+            minAmountLD: (record.amountIn * 9900) / 10_000, // 1% slippage
             extraOptions: "",
             composeMsg: "",
             oftCmd: ""
@@ -555,40 +576,25 @@ contract CrosschainDepositAdapter is
         return supportedVaults[vault];
     }
 
-
     // ========================================= LAYERZERO OVERRIDES =========================================
 
     /**
      * @dev This contract does not receive standard messages, only compose callbacks
      */
-    function _lzReceive(
-        Origin calldata,
-        bytes32,
-        bytes calldata,
-        address,
-        bytes calldata
-    ) internal pure override {
+    function _lzReceive(Origin calldata, bytes32, bytes calldata, address, bytes calldata) internal pure override {
         revert("Does not receive standard messages");
     }
 
     /**
      * @notice Allow contract to receive ETH for refund gas fees
      */
-    receive() external payable {}
+    receive() external payable { }
 
     // ========================================= EVENTS =========================================
 
-    event DepositStatusUpdated(
-        uint256 indexed depositId,
-        DepositStatus oldStatus,
-        DepositStatus newStatus
-    );
+    event DepositStatusUpdated(uint256 indexed depositId, DepositStatus oldStatus, DepositStatus newStatus);
 
-    event EmergencyRecovery(
-        address indexed token,
-        address indexed to,
-        uint256 amount
-    );
+    event EmergencyRecovery(address indexed token, address indexed to, uint256 amount);
 
     // ========================================= STORAGE GAP =========================================
 

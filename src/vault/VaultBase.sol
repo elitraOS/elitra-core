@@ -7,7 +7,7 @@ import { IVaultBase } from "../interfaces/IVaultBase.sol";
 import { ITransactionGuard } from "../interfaces/ITransactionGuard.sol";
 import { Compatible } from "./Compatible.sol";
 import { AuthUpgradeable, Authority } from "./AuthUpgradeable.sol";
-import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 
 /// @title VaultBase
@@ -104,20 +104,24 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     /// @param data The calldata to execute
     /// @param value The amount of ETH to send
     /// @return result The return data of the call
-    function _manage(address target, bytes calldata data, uint256 value)
+    function _manage(
+        address target,
+        bytes calldata data,
+        uint256 value
+    )
         internal
         requiresAuth
         returns (bytes memory result)
     {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
-        
+
         if (!vaultBaseStorage.trustedTargets[target]) {
             ITransactionGuard guard = vaultBaseStorage.guards[target];
-            
+
             if (address(guard) == address(0)) {
                 revert Errors.TransactionValidationFailed(target);
             }
-            
+
             if (!guard.validate(msg.sender, data, value)) {
                 revert Errors.TransactionValidationFailed(target);
             }
@@ -128,12 +132,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
 
     /// @notice Execute a batch of calls
     /// @param calls The array of calls to execute
-    function manageBatch(Call[] calldata calls)
-        public
-        payable
-        virtual
-        requiresAuth
-    {
+    function manageBatch(Call[] calldata calls) public payable virtual requiresAuth {
         require(calls.length > 0, "No calls provided");
 
         for (uint256 i = 0; i < calls.length; ++i) {

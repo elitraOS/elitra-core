@@ -2,15 +2,15 @@
 pragma solidity ^0.8.28;
 
 // LayerZero imports
-import {IOFT, SendParam, OFTReceipt} from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
-import {MessagingFee, MessagingReceipt} from "@layerzerolabs/oft-evm/contracts/OFTCore.sol";
-import {OFTComposeMsgCodec} from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
-import {IWETH9} from "../../interfaces/IWETH9.sol";
+import { IOFT, SendParam, OFTReceipt } from "@layerzerolabs/oft-evm/contracts/interfaces/IOFT.sol";
+import { MessagingFee, MessagingReceipt } from "@layerzerolabs/oft-evm/contracts/OFTCore.sol";
+import { OFTComposeMsgCodec } from "@layerzerolabs/oft-evm/contracts/libs/OFTComposeMsgCodec.sol";
+import { IWETH9 } from "../../interfaces/IWETH9.sol";
 
 // OpenZeppelin imports
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title CrosschainStrategyAdapter
@@ -90,11 +90,12 @@ contract CrosschainStrategyAdapter is Ownable {
      * @param _vault The vault address allowed to send messages
      * @param _wrappedNative The address of the wrapped native token (e.g., WSEI)
      */
-    constructor(address _owner, address _vault, address _wrappedNative) Ownable(_owner) {
+    constructor(address _owner, address _vault, address _wrappedNative) {
         if (_vault == address(0)) revert InvalidVault();
-        
+
         vault = _vault;
         wrappedNative = _wrappedNative;
+        _transferOwnership(_owner);
     }
 
     // ========================================= CORE FUNCTIONS =========================================
@@ -115,8 +116,13 @@ contract CrosschainStrategyAdapter is Ownable {
         address _token,
         uint256 _amount,
         bytes calldata _options
-    ) external payable onlyVault returns (MessagingReceipt memory receipt, OFTReceipt memory oftReceipt) {
-        // pull fund from the vault 
+    )
+        external
+        payable
+        onlyVault
+        returns (MessagingReceipt memory receipt, OFTReceipt memory oftReceipt)
+    {
+        // pull fund from the vault
         IERC20(_token).safeTransferFrom(vault, address(this), _amount);
 
         // Verify the recipient is the allowed vault for this chain
@@ -130,7 +136,7 @@ contract CrosschainStrategyAdapter is Ownable {
             dstEid: _dstEid,
             to: OFTComposeMsgCodec.addressToBytes32(_recipient),
             amountLD: _amount,
-            minAmountLD: (_amount * 9900) / 10000, // 1% slippage tolerance
+            minAmountLD: (_amount * 9900) / 10_000, // 1% slippage tolerance
             extraOptions: _options,
             composeMsg: "",
             oftCmd: ""
@@ -142,12 +148,14 @@ contract CrosschainStrategyAdapter is Ownable {
         if (_token == wrappedNative) {
             // Unwrap WSEI to Native SEI
             IWETH9(_token).withdraw(_amount);
-            
+
             // Ensure we have enough native balance (fee from msg.value + amount from unwrap)
             if (address(this).balance < fee.nativeFee + _amount) revert InvalidFee();
 
             // Send Native SEI (fee + amount)
-            (receipt, oftReceipt) = IOFT(oft).send{value: fee.nativeFee + _amount}(sendParam, fee, payable(msg.sender));
+            (receipt, oftReceipt) = IOFT(oft).send{ value: fee.nativeFee + _amount }(
+                sendParam, fee, payable(msg.sender)
+            );
         } else {
             if (msg.value < fee.nativeFee) revert InvalidFee();
 
@@ -155,7 +163,7 @@ contract CrosschainStrategyAdapter is Ownable {
             IERC20(_token).safeIncreaseAllowance(oft, _amount);
 
             // Send tokens
-            (receipt, oftReceipt) = IOFT(oft).send{value: fee.nativeFee}(sendParam, fee, payable(msg.sender));
+            (receipt, oftReceipt) = IOFT(oft).send{ value: fee.nativeFee }(sendParam, fee, payable(msg.sender));
 
             // Reset allowance if any remaining
             uint256 remaining = IERC20(_token).allowance(address(this), oft);
@@ -184,7 +192,11 @@ contract CrosschainStrategyAdapter is Ownable {
         uint256 _amount,
         bytes calldata _options,
         bool _payInLzToken
-    ) external view returns (MessagingFee memory fee) {
+    )
+        external
+        view
+        returns (MessagingFee memory fee)
+    {
         address oft = tokenToOft[_token];
         if (oft == address(0)) revert TokenNotSupported();
 
@@ -192,12 +204,12 @@ contract CrosschainStrategyAdapter is Ownable {
             dstEid: _dstEid,
             to: OFTComposeMsgCodec.addressToBytes32(_recipient),
             amountLD: _amount,
-            minAmountLD: (_amount * 9900) / 10000, // 1% slippage tolerance
+            minAmountLD: (_amount * 9900) / 10_000, // 1% slippage tolerance
             extraOptions: _options,
             composeMsg: "",
             oftCmd: ""
         });
-        
+
         return IOFT(oft).quoteSend(sendParam, _payInLzToken);
     }
 
@@ -257,5 +269,5 @@ contract CrosschainStrategyAdapter is Ownable {
     /**
      * @notice Allow receiving ETH
      */
-    receive() external payable {}
+    receive() external payable { }
 }
