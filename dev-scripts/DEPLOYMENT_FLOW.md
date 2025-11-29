@@ -27,4 +27,4 @@
 
 1. bash dev-scripts/deploy/crosschain-strategy-adapter.sh
 2. bash dev-scripts/crosschain/set-token-config.sh
-3. bash dev-scripts/crosschain/set-remote-vault.sh (Setting up the dst receiver vault)
+3. bash dev-scripts/crosschain/set-remote-vault.sh

@@ -26,10 +26,10 @@ echo "Sending Funds to ARB SubVault via LayerZero"
 echo "================================================================"
 echo "RPC URL: $RPC_URL"
 echo "Vault: $CURRENT_VAULT_ADDRESS"
-echo "Asset: $CURRENT_TOKEN_ADDRESS"
+echo "Asset: $CURRENT_ASSET_ADDRESS"
 echo "Adapter: $CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS"
-echo "Destination EID: $CURRENT_DST_EID"
-echo "Destination Vault: $CURRENT_DST_VAULT_ADDRESS"
+echo "Destination EID: $DEST_EID"
+echo "Destination Vault: $DEST_VAULT_ADDRESS"
 echo "Send Amount: $SEND_AMOUNT"
 echo "================================================================"
 
@@ -45,12 +45,12 @@ if [ -z "$CURRENT_VAULT_ADDRESS" ]; then
 fi
 
 if [ -z "$CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS" ]; then
-    echo "Error: CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS not set."
+    echo "Error: CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS not set."
     exit 1
 fi
 
-if [ -z "$CURRENT_DST_EID" ] || [ -z "$CURRENT_DST_VAULT_ADDRESS" ]; then
-    echo "Error: CURRENT_DST_EID or CURRENT_DST_VAULT_ADDRESS not set."
+if [ -z "$DEST_EID" ] || [ -z "$DEST_VAULT_ADDRESS" ]; then
+    echo "Error: DEST_EID or DEST_VAULT_ADDRESS not set."
     exit 1
 fi
 
@@ -66,7 +66,7 @@ forge script script/crosschain/SendToSubVault.s.sol \
     --broadcast \
     --compiler-version 0.8.28 \
     --evm-version "cancun" \
-    --chain-id 1329 \
+    --chain-id $CHAIN_ID \
     --force \
     -vvvv
 
