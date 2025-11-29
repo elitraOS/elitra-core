@@ -1,4 +1,3 @@
-
 ## Load hub config
 source config/sei/wsei/hub/main.sh
 source config/sei/wsei/hub/hub-config.sh
@@ -9,9 +8,31 @@ export CURRENT_BRIDGE=lz
 
 REMOTE_UPPER=$(echo "$CURRENT_REMOTE" | tr '[:lower:]' '[:upper:]')
 
+
+source config/sei/wsei/remotes/hub/main.sh
+source config/sei/wsei/remotes/hub/$CURRENT_BRIDGE.sh
+
 source config/sei/wsei/remotes/$CURRENT_REMOTE/main.sh
 source config/sei/wsei/remotes/$CURRENT_REMOTE/$CURRENT_BRIDGE.sh
 
 
+eval "export REMOTE_SUB_VAULT_ADDRESS=\$${REMOTE_UPPER}_SUB_VAULT_ADDRESS"
+eval "export REMOTE_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS=\$${REMOTE_UPPER}_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS"
+eval "export REMOTE_OFT_ADDRESS=\$${REMOTE_UPPER}_OFT_ADDRESS"
 
-eval "export CURRENT_SUB_VAULT_ADDRESS=\$${REMOTE_UPPER}_SUB_VAULT_ADDRESS"
+
+
+
+## Current setting 
+export INTERACT_FROM_HUB=true
+if [ "$INTERACT_FROM_HUB" = true ]; then
+    export CURRENT_VAULT_ADDRESS=$VAULT_ADDRESS
+    export CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS=$CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS
+    export CURRENT_OFT_ADDRESS=$OFT_ADDRESS
+    export CURRENT_ASSET_ADDRESS=$ASSET_ADDRESS
+else
+    export CURRENT_VAULT_ADDRESS=$REMOTE_SUB_VAULT_ADDRESS
+    export CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS=$REMOTE_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS
+    export CURRENT_OFT_ADDRESS=$REMOTE_OFT_ADDRESS
+    export CURRENT_ASSET_ADDRESS=$REMOTE_ASSET_ADDRESS
+fi

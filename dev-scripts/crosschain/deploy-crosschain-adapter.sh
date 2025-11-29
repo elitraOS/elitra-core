@@ -9,7 +9,7 @@
 
 set -e
 
-source dev-scripts/current-env.sh
+# source dev-scripts/current-env.sh
 echo "================================================================"
 echo "Deploying CrosschainStrategyAdapter"
 echo "================================================================"
