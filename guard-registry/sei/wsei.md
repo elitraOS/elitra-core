@@ -8,19 +8,19 @@
 
 ### deposit
 
-```json
+```solidity
 deposit(amount uint256, to address)
 ```
 
 ### withdraw
 
-```json
+```solidity
 withdraw(amount uint256, to address)
 ```
 
 ### approve
 
-```json
+```solidity
 approve(spender address, amount uint256)
 ```
 

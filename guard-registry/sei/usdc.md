@@ -8,7 +8,7 @@
 
 ### approve
 
-```json
+```solidity
 approve(spender address, amount uint256)
 ```
 

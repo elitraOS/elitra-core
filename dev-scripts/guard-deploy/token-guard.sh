@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Deployment script for ApproveGuard
-# Usage: bash dev-scripts/deploy-approve-guard.sh
+# Deployment script for TokenGuard
+# Usage: bash dev-scripts/guard-deploy/token-guard.sh
 #
 # Before running:
 # 1. Source your environment file (e.g., source env.sei.sh)
@@ -11,7 +11,7 @@ set -e
 
 # Source environment variables
 echo "================================================================"
-echo "Deploying ApproveGuard"
+echo "Deploying TokenGuard"
 echo "================================================================"
 echo "RPC URL: $RPC_URL"
 echo "Deployer: $DEPLOYER_ADDRESS"
@@ -27,10 +27,10 @@ fi
 
 
 echo ""
-echo "Deploying ApproveGuard..."
+echo "Deploying TokenGuard..."
 echo ""
 
-forge script script/guard-deploy/Deploy_ApproveGuard.s.sol \
+forge script script/guard-deploy/Deploy_TokenGuard.s.sol \
     --rpc-url $RPC_URL \
     --broadcast \
     --compiler-version 0.8.28 \
@@ -45,17 +45,17 @@ forge script script/guard-deploy/Deploy_ApproveGuard.s.sol \
 
 echo ""
 echo "================================================================"
-echo "ApproveGuard deployment complete!"
+echo "TokenGuard deployment complete!"
 echo "================================================================"
 echo ""
 echo "IMPORTANT: Save the deployed address!"
 echo ""
 echo "Next steps:"
 echo "1. Save address to your config file:"
-echo "   export APPROVE_GUARD_ADDRESS=0x..."
+echo "   export TOKEN_GUARD_ADDRESS=0x..."
 echo ""
 echo "2. Set the guard on your vault for the token address:"
 echo "   cast send \$VAULT_ADDRESS \\"
-echo "     \"setGuard(address,address)\" \$ASSET_ADDRESS \$APPROVE_GUARD_ADDRESS \\"
+echo "     \"setGuard(address,address)\" \$ASSET_ADDRESS \$TOKEN_GUARD_ADDRESS \\"
 echo "     --rpc-url \$RPC_URL --private-key \$PRIVATE_KEY"
 echo "================================================================"

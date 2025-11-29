@@ -4,11 +4,11 @@ pragma solidity 0.8.28;
 import { ITransactionGuard } from "../../interfaces/ITransactionGuard.sol";
 import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
-/// @title ApproveGuard
+/// @title TokenGuard
 /// @author Elitra
-/// @notice Generic guard for ERC20 approval operations.
+/// @notice Generic guard for ERC20 token approval operations.
 /// @dev Restricts approvals to specific whitelisted spenders.
-contract ApproveGuard is ITransactionGuard, Ownable {
+contract TokenGuard is ITransactionGuard, Ownable {
     /// @notice approve(address,uint256) selector: 0x095ea7b3
     bytes4 public constant APPROVE_SELECTOR = 0x095ea7b3;
 
@@ -33,7 +33,6 @@ contract ApproveGuard is ITransactionGuard, Ownable {
             // Decode the spender from calldata (first argument)
             // calldata layout: [4 bytes selector][32 bytes spender][32 bytes amount]
             address spender = abi.decode(data[4:36], (address));
-
             return whitelistedSpenders[spender];
         }
 

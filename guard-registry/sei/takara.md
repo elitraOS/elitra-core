@@ -8,12 +8,12 @@
 
 ### supply
 
-```json
+```solidity
 supply(amount uint256, onBehalfOf address, referralCode uint16)
 ```
 
 ### withdraw
 
-```json
+```solidity
 withdraw(asset address, amount uint256, to address)
 ```
