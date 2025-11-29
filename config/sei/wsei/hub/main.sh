@@ -1,0 +1,11 @@
+## Token name and symbol, addresses 
+export NAME="Elitra WSEI Vault"
+export SYMBOL="eWSEI"
+export ASSET_ADDRESS=0xE30feDd158A2e3b13e9badaeABaFc5516e95e8C7 # Wsei
+
+
+## Deplyoyment info
+export VAULT_ADDRESS=0x6A51DA7f34B24aDaC048750e978d186498270957
+export ROLES_AUTHORITY_ADDRESS=0x8586e237A5154160efa315dDA4E11f0B6EF452cD
+
+
