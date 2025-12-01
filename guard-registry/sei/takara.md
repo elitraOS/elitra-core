@@ -2,7 +2,9 @@
 
 ## Target contract address
 
-0xd1E6a6F58A29F64ab2365947ACb53EfEB6Cc05e0
+##### SEI - 0xA26b9BFe606d29F16B5Aecf30F9233934452c4E2
+
+##### USDC - 0xd1E6a6F58A29F64ab2365947ACb53EfEB6Cc05e0
 
 ## Allowed function abi parameters
 
@@ -15,16 +17,4 @@ mint(uint256 mintAmount)
 
 ```solidity
 redeem(uint256 redeemAmount)
-```
-
-### supply
-
-```solidity
-supply(amount uint256, onBehalfOf address, referralCode uint16)
-```
-
-### withdraw
-
-```solidity
-withdraw(asset address, amount uint256, to address)
 ```
