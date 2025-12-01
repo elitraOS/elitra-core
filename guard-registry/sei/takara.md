@@ -18,3 +18,19 @@ mint(uint256 mintAmount)
 ```solidity
 redeem(uint256 redeemAmount)
 ```
+
+---
+
+## Takara Comptroller Contract Guard
+
+### Target contract address
+
+##### SEI, USDC - 0x71034bf5eC0FAd7aEE81a213403c8892F3d8CAeE
+
+### Allowed function abi parameters
+
+#### claimReward
+
+```solidity
+claimReward()
+```
