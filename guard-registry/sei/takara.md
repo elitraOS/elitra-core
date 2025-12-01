@@ -6,6 +6,17 @@
 
 ## Allowed function abi parameters
 
+### mint
+```solidity
+mint(uint256 mintAmount)
+```
+
+### redeem
+
+```solidity
+redeem(uint256 redeemAmount)
+```
+
 ### supply
 
 ```solidity
