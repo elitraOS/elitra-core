@@ -91,12 +91,14 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault, UUPSUpgrade
             return;
         }
 
-        // 4. Update own state
+        // Emit the changes
+        emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
+
+        // Update own state
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
         lastBlockUpdated = block.number;
 
-        emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
         emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
     }
 

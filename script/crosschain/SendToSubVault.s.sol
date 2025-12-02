@@ -94,6 +94,11 @@ contract SendToSubVault is Script {
             options
         );
 
+        bytes memeory depostToTakaraData = abi.encodeWithSelector(
+            TakaraComptroller.deposit.selector,
+            sendAmount
+        );
+
         // Create calls array
         Call[] memory calls = new Call[](2);
         calls[0] = Call({
@@ -106,6 +111,9 @@ contract SendToSubVault is Script {
             data: sendData,
             value: totalFee
         });
+
+        // my view: first two call: bridge fund from sei -> eth
+        // last call: investing on sei -> takara
 
         console2.log("\n=== Executing Batch ===");
         console2.log("Call 1: Approve adapter to spend", sendAmount, "tokens");

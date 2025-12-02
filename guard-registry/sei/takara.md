@@ -9,6 +9,10 @@
 ## Allowed function abi parameters
 
 ### mint
+```solidity 
+approve(address spender, uint256 amount)
+```
+
 ```solidity
 mint(uint256 mintAmount)
 ```
@@ -34,3 +38,7 @@ redeem(uint256 redeemAmount)
 ```solidity
 claimReward()
 ```
+
+
+- intent:
+ 
