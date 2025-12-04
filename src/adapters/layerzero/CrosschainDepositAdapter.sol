@@ -32,18 +32,14 @@ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 
 // Elitra imports
 import { ICrosschainDepositAdapter } from "../../interfaces/ICrosschainDepositAdapter.sol";
+import { ICrosschainDepositQueue } from "../../interfaces/ICrosschainDepositQueue.sol";
 import { IElitraVault, Call } from "../../interfaces/IElitraVault.sol";
 
 /**
- * @title MultichainDepositAdapter
+ * @title CrosschainDepositAdapter
  * @notice Upgradeable adapter for cross-chain vault deposits via LayerZero OFT compose
- * @dev Receives tokens via LayerZero, executes arbitrary zap operations, then deposits to vault
- *
- * Key Features:
- * - Generic multicall pattern for flexible zapping (built from source chain SDK)
- * - Robust error handling with automatic refund on failure
- * - Gas-efficient design with reserved gas for error handling
- * - Full deposit tracking and recovery mechanisms
+ * @dev Receives tokens via LayerZero, executes arbitrary zap operations, then deposits to vault.
+ *      Failed deposits are forwarded to a CrosschainDepositQueue for manual handling.
  */
 contract CrosschainDepositAdapter is
     Initializable,
@@ -72,7 +68,10 @@ contract CrosschainDepositAdapter is
     mapping(address => uint256[]) public userDepositIds;
     mapping(address => bool) public supportedVaults;
     mapping(address => address) public tokenToOFT; // token => OFT contract
+    mapping(address => address) public oftToToken; // OFT => token contract
     mapping(address => bool) public supportedOFTs;
+
+    address public depositQueue;
 
     // ========================================= INITIALIZER =========================================
 
@@ -134,61 +133,68 @@ contract CrosschainDepositAdapter is
         // Only accept compose messages from the LayerZero endpoint
         require(msg.sender == address(endpoint), "Only endpoint");
 
-        // // Only accept from supported OFTs
-        // require(supportedOFTs[_from], "OFT not supported");
+        // Only accept from supported OFTs
+        require(supportedOFTs[_from], "OFT not supported");
 
         // Decode the OFT compose message
         uint32 srcEid = OFTComposeMsgCodec.srcEid(_message);
         uint256 amountLD = OFTComposeMsgCodec.amountLD(_message);
         bytes memory composeMsg = OFTComposeMsgCodec.composeMsg(_message);
 
-        // Decode our custom compose message: (vault, receiver, zapCalls)
-        (address vault, address receiver, Call[] memory zapCalls) = abi.decode(composeMsg, (address, address, Call[]));
+        // Decode our custom compose message: (vault, receiver, minAmountOut, zapCalls)
+        (address vault, address receiver, uint256 minAmountOut, Call[] memory zapCalls) = abi.decode(composeMsg, (address, address, uint256, Call[]));
 
-        // // Validate
-        // require(supportedVaults[vault], "Vault not supported");
-        // require(receiver != address(0), "Invalid receiver");
+        // Validate
+        require(supportedVaults[vault], "Vault not supported");
+        require(receiver != address(0), "Invalid receiver");
 
-        // // Get the token that was received (from the OFT mapping)
+        // Get the token that was received (from the OFT mapping)
         address token = _getTokenFromOFT(_from);
-        // require(token != address(0), "Token not found");
 
         // Record the deposit
         uint256 depositId = _recordDeposit(receiver, srcEid, token, amountLD, vault, _guid);
 
         // Process deposit: execute zaps (if any) and deposit to vault
-        uint256 shares = _processDeposit(depositId, vault, receiver, token, amountLD, zapCalls);
-
-        // Update success status
-        depositRecords[depositId].sharesReceived = shares;
-        _updateDepositStatus(depositId, DepositStatus.Success);
-        emit DepositSuccess(depositId, receiver, vault, shares);
+        try this.processDeposit(depositId, vault, receiver, token, amountLD, minAmountOut, zapCalls) returns (uint256 shares) {
+            // Update success status
+            depositRecords[depositId].sharesReceived = shares;
+            _updateDepositStatus(depositId, DepositStatus.Success);
+            emit DepositSuccess(depositId, receiver, vault, shares);
+        } catch (bytes memory reason) {
+            // Handle failure: Record reason and send to queue
+            depositRecords[depositId].failureReason = reason;
+            _handleDepositFailure(depositId, token, amountLD, reason);
+        }
     }
 
     /**
-     * @notice Internal function to process deposit with zapping
+     * @notice External function to process deposit with zapping (public for try/catch)
+     * @dev Only callable by this contract
      */
-    function _processDeposit(
+    function processDeposit(
         uint256 depositId,
         address vault,
         address receiver,
         address token,
         uint256 amount,
+        uint256 minAmountOut,
         Call[] memory zapCalls
     )
-        internal
+        external
+        onlySelf
         returns (uint256 shares)
-    {
+    {   
         // If there are zap calls, execute them
         if (zapCalls.length > 0) {
             uint256 balanceBefore = IERC20(IElitraVault(vault).asset()).balanceOf(address(this));
 
             // Execute zap operations
-            IElitraVault(vault).manageBatch(zapCalls);
+            this.manageBatch(zapCalls);
 
             uint256 balanceAfter = IERC20(IElitraVault(vault).asset()).balanceOf(address(this));
             uint256 amountOut = balanceAfter - balanceBefore;
 
+            require(amountOut >= minAmountOut, "Slippage exceeded");
             require(amountOut > 0, "Zap produced no output");
 
             emit ZapExecuted(depositId, zapCalls.length, amountOut);
@@ -197,28 +203,13 @@ contract CrosschainDepositAdapter is
             shares = _depositToVault(vault, receiver, amountOut);
         } else {
             // No zap needed - deposit directly
-            shares = _depositToVault(vault, receiver, amount);
+            if (token == IElitraVault(vault).asset()) {
+                shares = _depositToVault(vault, receiver, amount);
+            } else {
+                // emit TokenMismatch(depositId, token, IElitraVault(vault).asset());
+                revert("Token mismatch");
+            }
         }
-    }
-
-    /**
-     * @notice External wrapper for processDeposit (kept for interface compatibility)
-     * @inheritdoc ICrosschainDepositAdapter
-     */
-    function processDeposit(
-        uint256 depositId,
-        address vault,
-        address receiver,
-        address token,
-        uint256 amount,
-        Call[] calldata zapCalls
-    )
-        external
-        override
-        onlySelf
-        returns (uint256 shares)
-    {
-        return _processDeposit(depositId, vault, receiver, token, amount, zapCalls);
     }
 
     /**
@@ -232,69 +223,55 @@ contract CrosschainDepositAdapter is
     }
 
     /**
-     * @notice Deposit tokens into vault for receiver
      * @inheritdoc ICrosschainDepositAdapter
      */
     function depositToVault(
         address vault,
         address receiver,
         uint256 amount
-    )
-        external
-        override
-        onlySelf
-        returns (uint256 shares)
-    {
+    ) external override onlySelf returns (uint256 shares) {
         return _depositToVault(vault, receiver, amount);
     }
 
-    /**
-     * @notice Safely attempt refund (external to enable try-catch)
-     * @inheritdoc ICrosschainDepositAdapter
-     */
-    function safeAttemptRefund(uint256 depositId) external override onlySelf {
-        _attemptRefund(depositId);
-    }
+    // ========================================= INTERNAL FUNCTIONS =========================================
 
-    /**
-     * @notice Manual refund for failed deposits
-     * @inheritdoc ICrosschainDepositAdapter
-     */
-    function manualRefund(uint256 depositId) external override onlyOwnerOrOperator nonReentrant {
-        DepositRecord storage record = depositRecords[depositId];
+    function _handleDepositFailure(uint256 depositId, address token, uint256 amount, bytes memory reason) internal {
+        if (depositQueue == address(0)) {
+            // If no queue is set, just mark as failed and leave tokens in adapter (emergency recover needed)
 
-        require(
-            record.status == DepositStatus.ZapFailed || record.status == DepositStatus.DepositFailed
-                || record.status == DepositStatus.RefundFailed,
-            "Not eligible for refund"
-        );
+            // transfer bridge token to the user for safety 
+            IERC20(token).safeTransfer(depositRecords[depositId].user, amount);
 
-        _attemptRefund(depositId);
-    }
+            _updateDepositStatus(depositId, DepositStatus.DepositFailed);
+            emit DepositFailed(depositId, depositRecords[depositId].user, reason);
+            return;
+        }
 
-    /**
-     * @notice Batch manual refund for multiple deposits
-     * @inheritdoc ICrosschainDepositAdapter
-     */
-    function batchManualRefund(uint256[] calldata depositIds) external override onlyOwnerOrOperator nonReentrant {
-        for (uint256 i = 0; i < depositIds.length; i++) {
-            DepositRecord storage record = depositRecords[depositIds[i]];
+        // Approve tokens to queue
+        IERC20(token).forceApprove(depositQueue, amount);
 
-            if (
-                record.status == DepositStatus.ZapFailed || record.status == DepositStatus.DepositFailed
-                    || record.status == DepositStatus.RefundFailed
-            ) {
-                try this.safeAttemptRefund(depositIds[i]) {
-                // Refund attempted
-                }
-                    catch {
-                    // Continue to next deposit
-                }
-            }
+        // Send to queue
+        try ICrosschainDepositQueue(depositQueue).recordFailedDeposit(
+            depositRecords[depositId].user,
+            depositRecords[depositId].srcEid,
+            token,
+            amount,
+            depositRecords[depositId].vault,
+            depositRecords[depositId].guid,
+            reason
+        ) {
+            _updateDepositStatus(depositId, DepositStatus.Queued);
+            emit DepositQueued(depositId, depositRecords[depositId].user, reason);
+        } catch {
+             // If queue push fails, just mark as failed locally
+            _updateDepositStatus(depositId, DepositStatus.DepositFailed);
+
+            // transfer bridge token to the user for safety 
+            IERC20(token).safeTransfer(depositRecords[depositId].user, amount);
+
+            emit DepositFailed(depositId, depositRecords[depositId].user, reason);
         }
     }
-
-    // ========================================= INTERNAL FUNCTIONS =========================================
 
     /**
      * @notice Record a deposit attempt
@@ -335,9 +312,7 @@ contract CrosschainDepositAdapter is
      * @notice Update deposit status
      */
     function _updateDepositStatus(uint256 depositId, DepositStatus newStatus) internal {
-        DepositStatus oldStatus = depositRecords[depositId].status;
         depositRecords[depositId].status = newStatus;
-        emit DepositStatusUpdated(depositId, oldStatus, newStatus);
     }
 
     /**
@@ -356,66 +331,25 @@ contract CrosschainDepositAdapter is
     }
 
     /**
-     * @notice Attempt refund to source chain
-     */
-    function _attemptRefund(uint256 depositId) internal {
-        DepositRecord storage record = depositRecords[depositId];
-
-        // If same-chain deposit (srcEid == 0), just transfer tokens back
-        if (record.srcEid == 0) {
-            _updateDepositStatus(depositId, DepositStatus.RefundSent);
-            IERC20(record.tokenIn).safeTransfer(record.user, record.amountIn);
-            emit RefundSent(depositId, record.user, record.amountIn, 0);
-            return;
-        }
-
-        // Cross-chain refund via OFT
-        address oft = tokenToOFT[record.tokenIn];
-        require(oft != address(0), "OFT not found");
-
-        // Build SendParam for refund
-        SendParam memory sendParam = SendParam({
-            dstEid: record.srcEid,
-            to: OFTComposeMsgCodec.addressToBytes32(record.user),
-            amountLD: record.amountIn,
-            minAmountLD: (record.amountIn * 9900) / 10_000, // 1% slippage
-            extraOptions: "",
-            composeMsg: "",
-            oftCmd: ""
-        });
-
-        // Quote the messaging fee
-        MessagingFee memory fee = IOFT(oft).quoteSend(sendParam, false);
-
-        // Check if contract has enough ETH for refund gas
-        require(address(this).balance >= fee.nativeFee, "Insufficient ETH for refund");
-
-        // Approve OFT to spend tokens
-        IERC20(record.tokenIn).forceApprove(oft, record.amountIn);
-
-        // Send tokens back to user on source chain
-        try IOFT(oft).send{ value: fee.nativeFee }(sendParam, fee, payable(address(this))) returns (
-            MessagingReceipt memory receipt, OFTReceipt memory
-        ) {
-            _updateDepositStatus(depositId, DepositStatus.RefundSent);
-            emit RefundSent(depositId, record.user, record.amountIn, record.srcEid);
-        } catch {
-            _updateDepositStatus(depositId, DepositStatus.RefundFailed);
-        }
-    }
-
-    /**
      * @notice Get token address from OFT address
      */
     function _getTokenFromOFT(address oft) internal view returns (address) {
-        // Search through tokenToOFT mapping
-        // Note: In production, you might want to maintain a reverse mapping for efficiency
-        // For now, this assumes the OFT is the token itself or we have it configured
-        // This is a simplified version - you may need to query the OFT contract directly
-        return oft; // Placeholder - implement based on your OFT setup
+        address token = oftToToken[oft];
+        if (token != address(0)) {
+            return token;
+        }
+        return oft;
     }
 
     // ========================================= ADMIN FUNCTIONS =========================================
+
+    /**
+     * @inheritdoc ICrosschainDepositAdapter
+     */
+    function setDepositQueue(address _queue) external onlyOwner {
+        require(_queue != address(0), "Invalid queue");
+        depositQueue = _queue;
+    }
 
     /**
      * @notice Set supported OFT token mapping
@@ -423,6 +357,7 @@ contract CrosschainDepositAdapter is
     function setSupportedOFT(address token, address oft, bool isActive) external onlyOwner {
         require(token != address(0) && oft != address(0), "Invalid address");
         tokenToOFT[token] = oft;
+        oftToToken[oft] = token;
         supportedOFTs[oft] = isActive;
     }
 
@@ -446,13 +381,6 @@ contract CrosschainDepositAdapter is
      */
     function unpause() external override onlyOwnerOrOperator {
         _unpause();
-    }
-
-    /**
-     * @inheritdoc ICrosschainDepositAdapter
-     */
-    function depositRefundGas() external payable override {
-        require(msg.value > 0, "Must send ETH");
     }
 
     /**
@@ -508,70 +436,6 @@ contract CrosschainDepositAdapter is
     /**
      * @inheritdoc ICrosschainDepositAdapter
      */
-    function getFailedDeposits(
-        uint256 startId,
-        uint256 limit
-    )
-        external
-        view
-        override
-        returns (uint256[] memory depositIds)
-    {
-        uint256[] memory tempIds = new uint256[](limit);
-        uint256 count = 0;
-
-        for (uint256 i = startId; i < totalDeposits && count < limit; i++) {
-            DepositRecord storage record = depositRecords[i];
-            if (
-                record.status == DepositStatus.ZapFailed || record.status == DepositStatus.DepositFailed
-                    || record.status == DepositStatus.RefundFailed
-            ) {
-                tempIds[count] = i;
-                count++;
-            }
-        }
-
-        // Resize array to actual count
-        depositIds = new uint256[](count);
-        for (uint256 i = 0; i < count; i++) {
-            depositIds[i] = tempIds[i];
-        }
-    }
-
-    /**
-     * @inheritdoc ICrosschainDepositAdapter
-     */
-    function quoteRefundFee(uint256 depositId) external view override returns (uint256 nativeFee) {
-        DepositRecord storage record = depositRecords[depositId];
-
-        // If same-chain deposit (srcEid == 0), no fee needed
-        if (record.srcEid == 0) {
-            return 0;
-        }
-
-        // Cross-chain refund via OFT
-        address oft = tokenToOFT[record.tokenIn];
-        require(oft != address(0), "OFT not found");
-
-        // Build SendParam for refund
-        SendParam memory sendParam = SendParam({
-            dstEid: record.srcEid,
-            to: OFTComposeMsgCodec.addressToBytes32(record.user),
-            amountLD: record.amountIn,
-            minAmountLD: (record.amountIn * 9900) / 10_000, // 1% slippage
-            extraOptions: "",
-            composeMsg: "",
-            oftCmd: ""
-        });
-
-        // Quote the messaging fee
-        MessagingFee memory fee = IOFT(oft).quoteSend(sendParam, false);
-        return fee.nativeFee;
-    }
-
-    /**
-     * @inheritdoc ICrosschainDepositAdapter
-     */
     function isVaultSupported(address vault) external view override returns (bool) {
         return supportedVaults[vault];
     }
@@ -591,8 +455,6 @@ contract CrosschainDepositAdapter is
     receive() external payable { }
 
     // ========================================= EVENTS =========================================
-
-    event DepositStatusUpdated(uint256 indexed depositId, DepositStatus oldStatus, DepositStatus newStatus);
 
     event EmergencyRecovery(address indexed token, address indexed to, uint256 amount);
 

@@ -94,11 +94,6 @@ contract SendToSubVault is Script {
             options
         );
 
-        bytes memeory depostToTakaraData = abi.encodeWithSelector(
-            TakaraComptroller.deposit.selector,
-            sendAmount
-        );
-
         // Create calls array
         Call[] memory calls = new Call[](2);
         calls[0] = Call({
