@@ -83,9 +83,11 @@ contract CrosschainDepositAdapter is
     /**
      * @notice Initialize the adapter
      * @param _owner Contract owner
+     * @param _queue Deposit queue address
      */
-    function initialize(address _owner) public initializer {
+    function initialize(address _owner, address _queue) public initializer {
         require(_owner != address(0), "Invalid owner");
+        require(_queue != address(0), "Invalid queue");
 
         __OApp_init(_owner);
         __Ownable_init();
@@ -97,6 +99,8 @@ contract CrosschainDepositAdapter is
         _transferOwnership(_owner);
         _grantRole(DEFAULT_ADMIN_ROLE, _owner);
         _grantRole(OPERATOR_ROLE, _owner);
+
+        depositQueue = _queue;
     }
 
     // ========================================= MODIFIERS =========================================

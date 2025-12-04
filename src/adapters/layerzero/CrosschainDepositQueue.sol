@@ -41,7 +41,7 @@ contract CrosschainDepositQueue is
 
     function initialize(address _owner) public initializer {
         require(_owner != address(0), "Invalid owner");
-        
+
         __AccessControl_init();
         __UUPSUpgradeable_init();
 
@@ -56,8 +56,11 @@ contract CrosschainDepositQueue is
         _;
     }
 
-    modifier onlyOperator() {
-        require(hasRole(OPERATOR_ROLE, msg.sender), "Only operator");
+    modifier onlyOwnerOrOperator() {
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(OPERATOR_ROLE, msg.sender),
+            "Not owner or operator"
+        );
         _;
     }
 
@@ -100,16 +103,8 @@ contract CrosschainDepositQueue is
     /**
      * @inheritdoc ICrosschainDepositQueue
      */
-    function resolveFailedDeposit(uint256 depositId, address recipient) external override onlyOperator {
-        FailedDeposit storage deposit = failedDeposits[depositId];
-        require(deposit.status == DepositStatus.Failed, "Not failed status");
-        require(recipient != address(0), "Invalid recipient");
-
-        deposit.status = DepositStatus.Resolved;
-
-        IERC20(deposit.token).safeTransfer(recipient, deposit.amount);
-
-        emit DepositResolved(depositId, deposit.user, deposit.token, deposit.amount, false);
+    function resolveFailedDeposit(uint256 depositId, address recipient) external override onlyOwnerOrOperator {
+        // TODO: implement this
     }
 
     // ========================================= ADMIN FUNCTIONS =========================================
@@ -117,7 +112,7 @@ contract CrosschainDepositQueue is
     /**
      * @inheritdoc ICrosschainDepositQueue
      */
-    function setAdapter(address _adapter) external override onlyOperator {
+    function setAdapter(address _adapter) external override onlyOwnerOrOperator {
         require(_adapter != address(0), "Invalid adapter");
         adapter = _adapter;
     }
