@@ -76,7 +76,8 @@ contract CrosschainDepositQueue is
         uint256 amount,
         address vault,
         bytes32 guid,
-        bytes calldata reason
+        bytes calldata reason,
+        uint256 sharePrice
     ) external override onlyAdapter {
         // Transfer tokens from adapter to this contract
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -92,19 +93,28 @@ contract CrosschainDepositQueue is
             guid: guid,
             failureReason: reason,
             timestamp: block.timestamp,
+            sharePrice: sharePrice,
             status: DepositStatus.Failed
         });
 
         userFailedDepositIds[user].push(depositId);
 
-        emit FailedDepositRecorded(depositId, user, token, amount, reason);
+        emit FailedDepositRecorded(depositId, user, token, amount, sharePrice, reason);
     }
 
     /**
      * @inheritdoc ICrosschainDepositQueue
      */
     function resolveFailedDeposit(uint256 depositId, address recipient) external override onlyOwnerOrOperator {
-        // TODO: implement this
+        FailedDeposit storage deposit = failedDeposits[depositId];
+        require(deposit.status == DepositStatus.Failed, "Not failed status");
+        require(recipient != address(0), "Invalid recipient");
+
+        deposit.status = DepositStatus.Resolved;
+
+        IERC20(deposit.token).safeTransfer(recipient, deposit.amount);
+
+        emit DepositResolved(depositId, deposit.user, deposit.token, deposit.amount, false);
     }
 
     // ========================================= ADMIN FUNCTIONS =========================================
@@ -135,4 +145,3 @@ contract CrosschainDepositQueue is
         return userFailedDepositIds[user];
     }
 }
-

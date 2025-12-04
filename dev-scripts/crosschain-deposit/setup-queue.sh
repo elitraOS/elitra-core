@@ -1,0 +1,1 @@
+cast send $QUEUE_ADDRESS "setAdapter(address)" $ADAPTER_ADDRESS --rpc-url $RPC_URL --private-key $PRIVATE_KEY

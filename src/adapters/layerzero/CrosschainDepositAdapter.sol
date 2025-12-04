@@ -254,6 +254,14 @@ contract CrosschainDepositAdapter is
         // Approve tokens to queue
         IERC20(token).forceApprove(depositQueue, amount);
 
+        // Get current PPS from vault if possible
+        uint256 sharePrice = 0;
+        try IElitraVault(depositRecords[depositId].vault).lastPricePerShare() returns (uint256 pps) {
+            sharePrice = pps;
+        } catch {
+            // Default to 0 if call fails
+        }
+
         // Send to queue
         try ICrosschainDepositQueue(depositQueue).recordFailedDeposit(
             depositRecords[depositId].user,
@@ -262,7 +270,8 @@ contract CrosschainDepositAdapter is
             amount,
             depositRecords[depositId].vault,
             depositRecords[depositId].guid,
-            reason
+            reason,
+            sharePrice
         ) {
             _updateDepositStatus(depositId, DepositStatus.Queued);
             emit DepositQueued(depositId, depositRecords[depositId].user, reason);

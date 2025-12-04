@@ -18,6 +18,7 @@ interface ICrosschainDepositQueue {
         bytes32 guid;
         bytes failureReason;
         uint256 timestamp;
+        uint256 sharePrice; // PPS at the time of failure
         DepositStatus status;
     }
 
@@ -28,6 +29,7 @@ interface ICrosschainDepositQueue {
         address indexed user,
         address indexed token,
         uint256 amount,
+        uint256 sharePrice,
         bytes reason
     );
 
@@ -50,6 +52,7 @@ interface ICrosschainDepositQueue {
      * @param vault Vault address
      * @param guid LayerZero GUID
      * @param reason Failure reason
+     * @param sharePrice Price per share at time of failure
      */
     function recordFailedDeposit(
         address user,
@@ -58,7 +61,8 @@ interface ICrosschainDepositQueue {
         uint256 amount,
         address vault,
         bytes32 guid,
-        bytes calldata reason
+        bytes calldata reason,
+        uint256 sharePrice
     ) external;
 
     /**
