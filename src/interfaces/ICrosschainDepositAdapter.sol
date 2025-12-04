@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.22;
+pragma solidity 0.8.28;
 
 import { Call } from "./IElitraVault.sol";
 /**
@@ -11,13 +11,6 @@ interface ICrosschainDepositAdapter {
     // ========================================= STRUCTS =========================================
 
     /**
-     * @notice Single call operation for batch execution
-     * @param target Contract to call
-     * @param value Native value to send
-     * @param data Calldata for the call
-     */
-
-    /**
      * @notice Deposit status tracking
      */
     enum DepositStatus {
@@ -25,8 +18,7 @@ interface ICrosschainDepositAdapter {
         Success,        // Successfully deposited to vault
         ZapFailed,      // Zap execution failed
         DepositFailed,  // Vault deposit failed
-        RefundSent,     // Refunded to source chain
-        RefundFailed    // Refund failed, needs manual intervention
+        Queued          // Sent to failure queue
     }
 
     /**
@@ -78,11 +70,10 @@ interface ICrosschainDepositAdapter {
         bytes reason
     );
 
-    event RefundSent(
+    event DepositQueued(
         uint256 indexed depositId,
         address indexed user,
-        uint256 amount,
-        uint32 dstEid
+        bytes reason
     );
 
     event ZapExecuted(
@@ -116,46 +107,13 @@ interface ICrosschainDepositAdapter {
         uint256 amount
     ) external returns (uint256 shares);
 
-    /**
-     * @notice Process deposit with zapping (external for try-catch)
-     * @param depositId Deposit record ID
-     * @param vault Target vault
-     * @param receiver Share receiver
-     * @param token Token to deposit (after zap)
-     * @param amount Amount received
-     * @param zapCalls Zap operations to execute
-     * @return shares Vault shares received
-     * @dev Only callable by this contract
-     */
-    function processDeposit(
-        uint256 depositId,
-        address vault,
-        address receiver,
-        address token,
-        uint256 amount,
-        Call[] calldata zapCalls
-    ) external returns (uint256 shares);
-
-    /**
-     * @notice Attempt automatic refund (external for try-catch)
-     * @param depositId Deposit record ID
-     * @dev Only callable by this contract
-     */
-    function safeAttemptRefund(uint256 depositId) external;
-
-    /**
-     * @notice Manual refund for failed deposits (operator only)
-     * @param depositId Deposit record ID
-     */
-    function manualRefund(uint256 depositId) external;
-
-    /**
-     * @notice Batch manual refund
-     * @param depositIds Array of deposit IDs to refund
-     */
-    function batchManualRefund(uint256[] calldata depositIds) external;
-
     // ========================================= ADMIN FUNCTIONS =========================================
+
+    /**
+     * @notice Set failure queue contract
+     * @param _queue Address of CrosschainDepositQueue
+     */
+    function setDepositQueue(address _queue) external;
 
     /**
      * @notice Pause the adapter
@@ -166,11 +124,6 @@ interface ICrosschainDepositAdapter {
      * @notice Unpause the adapter
      */
     function unpause() external;
-
-    /**
-     * @notice Deposit ETH for refund gas fees
-     */
-    function depositRefundGas() external payable;
 
     /**
      * @notice Emergency recover stuck tokens
@@ -210,24 +163,6 @@ interface ICrosschainDepositAdapter {
      * @return Array of deposit IDs
      */
     function getUserDepositIds(address user) external view returns (uint256[] memory);
-
-    /**
-     * @notice Get failed deposits needing manual intervention
-     * @param startId Start scanning from this ID
-     * @param limit Max records to return
-     * @return depositIds Array of failed deposit IDs
-     */
-    function getFailedDeposits(uint256 startId, uint256 limit)
-        external
-        view
-        returns (uint256[] memory depositIds);
-
-    /**
-     * @notice Quote refund fee
-     * @param depositId Deposit ID
-     * @return nativeFee ETH needed for refund
-     */
-    function quoteRefundFee(uint256 depositId) external view returns (uint256 nativeFee);
 
     /**
      * @notice Check if vault is supported

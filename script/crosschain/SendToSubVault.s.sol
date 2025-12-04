@@ -31,10 +31,10 @@ contract SendToSubVault is Script {
 
         // Load addresses from env
         address vaultAddress = vm.envAddress("CURRENT_VAULT_ADDRESS");
-        address assetAddress = vm.envAddress("CURRENT_TOKEN_ADDRESS");
+        address assetAddress = vm.envAddress("CURRENT_ASSET_ADDRESS");
         address adapterAddress = vm.envAddress("CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS");
-        uint32 dstEid = uint32(vm.envUint("CURRENT_DST_EID"));
-        address dstVault = vm.envAddress("CURRENT_DST_VAULT_ADDRESS");
+        uint32 dstEid = uint32(vm.envUint("DEST_EID"));
+        address dstVault = vm.envAddress("DEST_VAULT_ADDRESS");
         uint256 sendAmount = vm.envUint("SEND_AMOUNT");
 
         // Contracts
@@ -106,6 +106,9 @@ contract SendToSubVault is Script {
             data: sendData,
             value: totalFee
         });
+
+        // my view: first two call: bridge fund from sei -> eth
+        // last call: investing on sei -> takara
 
         console2.log("\n=== Executing Batch ===");
         console2.log("Call 1: Approve adapter to spend", sendAmount, "tokens");

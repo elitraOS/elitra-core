@@ -1,0 +1,1 @@
+cast send $LZ_CROSSCHAIN_DEPOSIT_QUEUE_ADDRESS "setAdapter(address)" $LZ_CROSSCHAIN_ADAPTER_ADDRESS --rpc-url $RPC_URL --private-key $PRIVATE_KEY

@@ -8,6 +8,7 @@ import { ITransactionGuard } from "../interfaces/ITransactionGuard.sol";
 import { Call } from "../interfaces/IElitraVault.sol";
 import { Errors } from "../libraries/Errors.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /**
  * @title SubVault
@@ -16,7 +17,7 @@ import { Address } from "@openzeppelin/contracts/utils/Address.sol";
  * @dev Inherits VaultBase for Auth, Pause, and Management capabilities.
  *      Intended to be used as a destination for bridged funds to execute cross-chain strategies.
  */
-contract SubVault is VaultBase, ISubVault {
+contract SubVault is VaultBase, ISubVault, UUPSUpgradeable {
     using Address for address;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -31,6 +32,8 @@ contract SubVault is VaultBase, ISubVault {
     function initialize(address _owner) public initializer {
         __VaultBase_init(_owner);
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override requiresAuth {}
 
     // Subvault is simple vaultbase with no additional functionality, simply for investing token with security 
 }

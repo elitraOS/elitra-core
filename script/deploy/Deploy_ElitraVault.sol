@@ -6,7 +6,7 @@ import { console2 } from "forge-std/console2.sol";
 import { ElitraVault } from "../../src/ElitraVault.sol";
 import { ManualBalanceUpdateHook } from "../../src/hooks/ManualBalanceUpdateHook.sol";
 import { HybridRedemptionHook } from "../../src/hooks/HybridRedemptionHook.sol";
-import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract Deploy is Script {
@@ -14,7 +14,6 @@ contract Deploy is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         address owner = vm.envOr("OWNER", deployer);
-        address proxyAdmin = vm.envOr("PROXY_ADMIN", deployer);
         address asset = vm.envAddress("ASSET_ADDRESS"); // USDC address
 
         console2.log("Deployer:", deployer);
@@ -54,10 +53,9 @@ contract Deploy is Script {
             symbol
         );
 
-        console2.log("Deploying TransparentUpgradeableProxy...");
-        TransparentUpgradeableProxy proxy = new TransparentUpgradeableProxy(
+        console2.log("Deploying ERC1967Proxy (UUPS)...");
+        ERC1967Proxy proxy = new ERC1967Proxy(
             address(implementation),
-            proxyAdmin,
             initData
         );
         console2.log("Proxy (ElitraVault):", address(proxy));

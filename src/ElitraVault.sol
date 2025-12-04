@@ -17,10 +17,11 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @title ElitraVault - Vault with pluggable oracle and redemption adapters
 /// @notice ERC-4626 vault that delegates validation logic to adapters
-contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
+contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault, UUPSUpgradeable {
     using Math for uint256;
     using Address for address;
     using SafeERC20 for IERC20;
@@ -90,12 +91,14 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             return;
         }
 
-        // 4. Update own state
+        // Emit the changes
+        emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
+
+        // Update own state
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
         lastBlockUpdated = block.number;
 
-        emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
         emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
     }
 
@@ -309,4 +312,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     function unpause() public override(VaultBase, IVaultBase) requiresAuth {
         _unpause();
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override requiresAuth {}
 }

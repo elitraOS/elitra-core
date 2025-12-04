@@ -1,0 +1,8 @@
+echo "Sourcing the hub config"
+
+## --- Hooks deployment info ---
+export ORACLE_HOOK_ADDRESS=0x6168F59e9F2Ae2084B11b89d718C509Eeba0d7F6
+export REDEMPTION_HOOK_ADDRESS=0xDA42AaC9A70Cd68627611E4Cb1DDC28f0503C828
+
+## Guard deployment infos
+export APPROVE_GUARD_ADDRESS=0x3dc7676bEfdC428BBa5d7cE3838B22C1028D4bAD

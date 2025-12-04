@@ -5,7 +5,7 @@ import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { SubVault } from "../../src/vault/SubVault.sol";
 import { CrosschainStrategyAdapter } from "../../src/adapters/layerzero/CrosschainStrategyAdapter.sol";
-import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title Deploy_SubVault
@@ -27,13 +27,13 @@ contract Deploy_SubVault is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         address owner = vm.envOr("OWNER", deployer);
-        address proxyAdmin = vm.envOr("PROXY_ADMIN", deployer);
+        // address proxyAdmin = vm.envOr("PROXY_ADMIN", deployer); // Not needed for UUPS
         // Fallback to TOKEN_ADDRESS or ASSET_ADDRESS if WRAPPED_NATIVE_ADDRESS is not set
         address wrappedNative = vm.envOr("WRAPPED_NATIVE_ADDRESS", vm.envOr("TOKEN_ADDRESS", vm.envAddress("ASSET_ADDRESS")));
 
         console2.log("Deployer:", deployer);
         console2.log("Owner:", owner);
-        console2.log("Proxy Admin:", proxyAdmin);
+        // console2.log("Proxy Admin:", proxyAdmin);
 
         vm.startBroadcast(deployerPrivateKey);
 
@@ -52,10 +52,9 @@ contract Deploy_SubVault is Script {
         );
 
         // Deploy proxy
-        console2.log("Deploying SubVault proxy...");
-        TransparentUpgradeableProxy subVaultProxy = new TransparentUpgradeableProxy(
+        console2.log("Deploying SubVault proxy (UUPS)...");
+        ERC1967Proxy subVaultProxy = new ERC1967Proxy(
             address(subVaultImpl),
-            proxyAdmin,
             initData
         );
         console2.log("SubVault proxy:", address(subVaultProxy));

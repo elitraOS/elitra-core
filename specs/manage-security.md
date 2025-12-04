@@ -150,7 +150,7 @@ graph TB
         G2[YieldGuard<br/>✓ stake<br/>✓ unstake<br/>✓ claim]
         G3[YieldGuard<br/>✓ deposit<br/>✓ withdraw]
         G4[SwapGuard<br/>✓ swap<br/>✓ addLiquidity]
-        G5[ApproveGuard<br/>✓ approve spender X<br/>✓ approve spender Y]
+        G5[TokenGuard<br/>✓ approve spender X<br/>✓ deposit/withdraw]
     end
 
     VM -.->|maps| T1
@@ -215,7 +215,7 @@ sequenceDiagram
 
 **Example State in Guards**:
 
-- `ApproveGuard`: `mapping(address => bool) whitelistedSpenders`
+- `TokenGuard`: `mapping(address => bool) whitelistedSpenders`, `bool depositAllowed`, `bool withdrawAllowed`
 - `YieldProtocolGuard`: `uint256 maxStakeAmount`, `uint256 minUnstakeAmount`
 - `AllowAllGuard`: No state (pure validation)
 
@@ -384,33 +384,36 @@ contract AllowAllGuard is ITransactionGuard {
 
 **Warning**: Only use for contracts you fully control or trust completely.
 
-### 2. ApproveGuard (Parameter Validation)
+### 2. TokenGuard (Parameter Validation)
 
-Validates not just function selectors, but also parameters:
+Validates not just function selectors, but also parameters. Supports approve, deposit (WSEI wrap), and withdraw (WSEI unwrap) operations:
 
 ```solidity
-contract ApproveGuard is ITransactionGuard {
+contract TokenGuard is ITransactionGuard {
     bytes4 public constant APPROVE_SELECTOR = 0x095ea7b3;  // approve(address,uint256)
+    bytes4 public constant DEPOSIT_SELECTOR = 0xd0e30db0; // deposit() for WSEI wrapping
+    bytes4 public constant WITHDRAW_SELECTOR = 0x2e1a7d4d; // withdraw(uint256) for WSEI unwrapping
 
     mapping(address spender => bool isAllowed) public whitelistedSpenders;
-
-    constructor(address[] memory _spenders) {
-        for (uint256 i = 0; i < _spenders.length; ++i) {
-            whitelistedSpenders[_spenders[i]] = true;
-        }
-    }
+    bool public depositAllowed = true;
+    bool public withdrawAllowed = true;
 
     function validate(address, bytes calldata data, uint256)
         external
         view
         returns (bool)
     {
-        if (bytes4(data) != APPROVE_SELECTOR) return false;
+        bytes4 sig = bytes4(data);
 
-        // Decode spender parameter (data[4:36])
-        address spender = abi.decode(data[4:36], (address));
+        if (sig == APPROVE_SELECTOR) {
+            address spender = abi.decode(data[4:36], (address));
+            return whitelistedSpenders[spender];
+        }
 
-        return whitelistedSpenders[spender];
+        if (sig == DEPOSIT_SELECTOR) return depositAllowed;
+        if (sig == WITHDRAW_SELECTOR) return withdrawAllowed;
+
+        return false;
     }
 }
 ```
@@ -420,8 +423,9 @@ contract ApproveGuard is ITransactionGuard {
 - ERC20 token approvals
 - Restricting approvals to specific DEX routers
 - Limiting which contracts can spend vault tokens
+- WSEI wrapping (deposit) and unwrapping (withdraw)
 
-**Security**: Prevents approval to malicious or untrusted addresses.
+**Security**: Prevents approval to malicious or untrusted addresses. Controls wrap/unwrap operations.
 
 ### 3. Advanced Guard (Complex Protocol Logic)
 
@@ -505,7 +509,7 @@ contract YieldProtocolGuard is ITransactionGuard {
 | --------------------------- | --------------------------------------------------------- |
 | Call to malicious contract  | No guard registered → Call reverts                        |
 | Call to dangerous function  | Guard checks selector → Returns false                     |
-| Excessive approval          | ApproveGuard validates spender → Rejects unauthorized     |
+| Excessive approval          | TokenGuard validates spender → Rejects unauthorized       |
 | Parameter injection         | Guard parses and validates params → Rejects invalid       |
 | Reentrancy via manage()     | Guards are view/pure → No state changes during validation |
 | Front-running guard changes | Guard updates emit events → Transparency & monitoring     |
