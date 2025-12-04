@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {BaseScript} from "./Base.s.sol";
-import {console} from "forge-std/console.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IMultichainDepositAdapter} from "../src/interfaces/IMultichainDepositAdapter.sol";
-import {Call} from "../src/interfaces/IElitraVault.sol";
+import { Script } from "forge-std/Script.sol";
+import { console } from "forge-std/console.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { Call } from "../../src/interfaces/IElitraVault.sol";
 
 /**
  * @notice LayerZero V2 SendParam struct
@@ -44,35 +43,38 @@ struct MessagingReceipt {
  *      where it will be wrapped to WSEI and deposited into the WSEI vault
  *
  * Usage:
- *   forge script script/CrossChainDeposit_SEI_WSEI.s.sol:CrossChainDeposit_SEI_WSEI \
+ *   forge script script/crosschain-deposit/CrossChainDeposit_SEI_WSEI.s.sol:CrossChainDeposit_SEI_WSEI \
  *     --rpc-url <SOURCE_CHAIN_RPC> \
  *     --broadcast \
- *     --verify
+ *     -vvv
  *
  * Environment Variables:
- *   PRIVATE_KEY or MNEMONIC - For transaction signing
- *   SEI_OFT_ADDRESS - SEI OFT contract on source chain (default: 0xbdf43ecadc5cef51b7d1772f722e40596bc1788b)
- *   ADAPTER_ADDRESS - MultichainDepositAdapter address on SEI chain
- *   WSEI_ADDRESS - WSEI token address on SEI (default: 0xE30feDd158A2e3b13e9badaeABaFc5516e95e8C7)
- *   WSEI_VAULT_ADDRESS - WSEI Vault address on SEI (default: 0x397e97798D2b2BBe17FaD2228D84C200c9F0554D)
- *   AMOUNT - Amount of SEI to bridge and deposit (in wei)
- *   RECEIVER - Address to receive vault shares (defaults to broadcaster)
- *   DST_EID - LayerZero destination endpoint ID for SEI chain
+ *   PRIVATE_KEY - For transaction signing
+ *   ETH_SEI_OFT_ADDRESS - SEI OFT contract on source chain
+ *   LZ_CROSSCHAIN_ADAPTER_ADDRESS - CrosschainDepositAdapter address on SEI chain
+ *   ASSET_ADDRESS - WSEI token address on SEI
+ *   VAULT_ADDRESS - WSEI Vault address on SEI
+ *   AMOUNT - Amount of SEI to bridge and deposit (in wei, defaults to 1 ether)
+ *   RECEIVER - Address to receive vault shares (defaults to deployer)
+ *   LZ_SEI_EID - LayerZero destination endpoint ID for SEI chain
  */
-contract CrossChainDeposit_SEI_WSEI is BaseScript {
+contract CrossChainDeposit_SEI_WSEI is Script {
+    function run() public {
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(deployerPrivateKey);
 
-    function run() public broadcast {
-        // Get environment variables or use defaults
-        address seiOft = vm.envAddress("ETH_SEI_OFT_ADDRESS");
-        address adapterAddress = vm.envAddress("SEI_LZ_ADAPTER_ADDRESS"); // Must be set
+        // Get environment variables
+        address ethSeiOft = vm.envAddress("ETH_OFT_ADDRESS");
+        address adapterAddress = vm.envAddress("LZ_CROSSCHAIN_ADAPTER_ADDRESS");
         address wseiAddress = vm.envAddress("ASSET_ADDRESS");
         address wseiVault = vm.envAddress("VAULT_ADDRESS");
-        uint256 amount = 1 ether;
-        address receiver = broadcaster;
-        uint32 dstEid = uint32(vm.envUint("LAYERZERO_SEI_EID"));
+        uint256 amount = vm.envOr("AMOUNT", uint256(0.001 ether));
+        address receiver = vm.envOr("RECEIVER", deployer);
+        uint32 dstEid = uint32(vm.envUint("LZ_EID"));
 
         console.log("=== Cross-Chain SEI Deposit to WSEI Vault ===");
-        console.log("SEI OFT (source):", seiOft);
+        console.log("Deployer:", deployer);
+        console.log("SEI OFT (source):", ethSeiOft);
         console.log("Adapter (SEI chain):", adapterAddress);
         console.log("WSEI (SEI chain):", wseiAddress);
         console.log("WSEI Vault (SEI chain):", wseiVault);
@@ -90,12 +92,16 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
             data: abi.encodeWithSignature("deposit()") // WSEI.deposit()
         });
 
-        // Encode compose message: (vault, receiver, zapCalls)
-        bytes memory composeMsg = abi.encode(wseiVault, receiver, zapCalls);
+        // minAmountOut: expect at least 99% of amount after wrapping (should be 1:1)
+        uint256 minAmountOut = (amount * 9900) / 10000;
+
+        // Encode compose message: (vault, receiver, minAmountOut, zapCalls)
+        bytes memory composeMsg = abi.encode(wseiVault, receiver, minAmountOut, zapCalls);
 
         console.log("\n=== Compose Message ===");
         console.log("Vault:", wseiVault);
         console.log("Receiver:", receiver);
+        console.log("Min Amount Out:", minAmountOut);
         console.log("Zap calls count:", zapCalls.length);
         console.logBytes(composeMsg);
 
@@ -106,23 +112,29 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
         SendParam memory sendParam = _buildSendParam(dstEid, adapterAddress, amount, composeMsg, options);
 
         // Quote the messaging fee
-        (uint256 nativeFee, uint256 lzTokenFee) = _quoteSend(seiOft, sendParam);
+        (uint256 nativeFee, uint256 lzTokenFee) = _quoteSend(ethSeiOft, sendParam);
 
         console.log("\n=== LayerZero Fees ===");
         console.log("Native fee:", nativeFee);
         console.log("LZ token fee:", lzTokenFee);
 
-        // Check broadcaster has enough SEI for amount + gas
+        // Check deployer has enough SEI for amount + gas
         uint256 requiredBalance = amount + nativeFee;
-        require(broadcaster.balance >= requiredBalance, "Insufficient balance for amount + gas");
+        console.log("deployer balance:", deployer.balance);
+        console.log("Required balance:", requiredBalance);
+        require(deployer.balance >= requiredBalance, "Insufficient balance for amount + gas");
 
         console.log("\n=== Broadcasting Transaction ===");
         console.log("Required balance:", requiredBalance);
-        console.log("Broadcaster balance:", broadcaster.balance);
+        console.log("Deployer balance:", deployer.balance);
+
+        vm.startBroadcast(deployerPrivateKey);
 
         // Call SEI OFT to send tokens cross-chain
         // This will trigger lzCompose on the adapter on SEI chain
-        _sendOFT(seiOft, sendParam, nativeFee);
+        _sendOFT(ethSeiOft, sendParam, nativeFee, deployer);
+
+        vm.stopBroadcast();
 
         console.log("\n=== Transaction Complete ===");
         console.log("SEI sent cross-chain. Monitor adapter on SEI chain for deposit completion.");
@@ -167,20 +179,13 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
     /**
      * @notice Build LayerZero SendParam struct
      */
-    function _buildSendParam(uint32 dstEid, address to, uint256 amount, bytes memory composeMsg, bytes memory options)
-        internal
-        pure
-        returns (SendParam memory)
-    {
-        // SendParam struct:
-        // - dstEid: destination endpoint ID
-        // - to: recipient address (adapter) as bytes32
-        // - amountLD: amount in local decimals
-        // - minAmountLD: minimum amount (slippage protection)
-        // - extraOptions: execution options for gas
-        // - composeMsg: our custom compose message
-        // - oftCmd: OFT command (empty for standard send)
-
+    function _buildSendParam(
+        uint32 dstEid,
+        address to,
+        uint256 amount,
+        bytes memory composeMsg,
+        bytes memory options
+    ) internal pure returns (SendParam memory) {
         bytes32 toBytes32 = bytes32(uint256(uint160(to)));
 
         return SendParam({
@@ -197,8 +202,10 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
     /**
      * @notice Quote the send fee
      */
-    function _quoteSend(address oft, SendParam memory sendParam) internal view returns (uint256 nativeFee, uint256 lzTokenFee) {
-        // Use interface to call quoteSend
+    function _quoteSend(
+        address oft,
+        SendParam memory sendParam
+    ) internal view returns (uint256 nativeFee, uint256 lzTokenFee) {
         MessagingFee memory fee = IOFT(oft).quoteSend(sendParam, false);
         nativeFee = fee.nativeFee;
         lzTokenFee = fee.lzTokenFee;
@@ -207,8 +214,12 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
     /**
      * @notice Send OFT cross-chain
      */
-    function _sendOFT(address oft, SendParam memory sendParam, uint256 nativeFee) internal {
-        // Use interface to call send
+    function _sendOFT(
+        address oft,
+        SendParam memory sendParam,
+        uint256 nativeFee,
+        address refundAddress
+    ) internal {
         MessagingFee memory fee = MessagingFee({
             nativeFee: nativeFee,
             lzTokenFee: 0
@@ -217,12 +228,16 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
         MessagingReceipt memory receipt = IOFT(oft).send{value: nativeFee}(
             sendParam,
             fee,
-            payable(broadcaster) // refundAddress
+            payable(refundAddress)
         );
 
         console.log("OFT send successful");
         console.log("Message GUID:", vm.toString(receipt.guid));
         console.log("Nonce:", receipt.nonce);
+    }
+
+    function test() public {
+        // Required for forge coverage to work
     }
 }
 
@@ -231,11 +246,16 @@ contract CrossChainDeposit_SEI_WSEI is BaseScript {
  * @notice Interface for LayerZero OFT contracts
  */
 interface IOFT {
-    function quoteSend(SendParam calldata _sendParam, bool _payInLzToken)
-        external view returns (MessagingFee memory msgFee);
+    function quoteSend(
+        SendParam calldata _sendParam,
+        bool _payInLzToken
+    ) external view returns (MessagingFee memory msgFee);
 
-    function send(SendParam calldata _sendParam, MessagingFee calldata _fee, address _refundAddress)
-        external payable returns (MessagingReceipt memory msgReceipt);
+    function send(
+        SendParam calldata _sendParam,
+        MessagingFee calldata _fee,
+        address _refundAddress
+    ) external payable returns (MessagingReceipt memory msgReceipt);
 }
 
 /**
