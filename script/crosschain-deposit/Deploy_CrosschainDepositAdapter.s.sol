@@ -26,8 +26,8 @@ contract Deploy_CrosschainDepositAdapter is Script {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
         address owner = vm.envOr("OWNER", deployer);
-        address lzEndpoint = vm.envAddress("LZ_ENDPOINT");
-        address queueAddress = vm.envAddress("QUEUE_ADDRESS");
+        address lzEndpoint = vm.envAddress("LZ_ENDPOINT_V2");
+        address queueAddress = vm.envAddress("LZ_CROSSCHAIN_DEPOSIT_QUEUE_ADDRESS");
 
         console2.log("=== Deployment Configuration ===");
         console2.log("Deployer:", deployer);

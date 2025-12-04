@@ -1,28 +1,28 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {BaseScript} from "./Base.s.sol";
-import {console} from "forge-std/console.sol";
-import {MultichainDepositAdapter} from "../src/crosschain/MultichainDepositAdapter.sol";
+import { Script } from "forge-std/Script.sol";
+import { console } from "forge-std/console.sol";
+import { CrosschainDepositAdapter } from "../../src/adapters/layerzero/CrosschainDepositAdapter.sol";
 
 /**
  * @title Configure_DVNs_Adapter
- * @notice Script to configure LayerZero DVNs for MultichainDepositAdapter
+ * @notice Script to configure LayerZero DVNs for CrosschainDepositAdapter
  * @dev Sets up required and optional DVNs for cross-chain message verification
  *
  * Usage:
- *   forge script script/Configure_DVNs_Adapter.s.sol:Configure_DVNs_Adapter \
+ *   forge script script/crosschain-deposit/Configure_DVNs_Adapter.s.sol:Configure_DVNs_Adapter \
  *     --rpc-url $SEI_RPC_URL \
  *     --broadcast \
  *     -vvv
  *
  * Environment Variables:
- *   ADAPTER_ADDRESS - MultichainDepositAdapter proxy address on SEI
- *   LAYERZERO_ENDPOINT_V2 - LayerZero V2 endpoint on SEI
- *   RECEIVE_ULN_302 - ReceiveUln302 library address
+ *   LZ_CROSSCHAIN_ADAPTER_ADDRESS - CrosschainDepositAdapter proxy address
+ *   LZ_ENDPOINT_V2 - LayerZero V2 endpoint address
+ *   LZ_RECEIVE_ULN_302 - ReceiveUln302 library address
  *   SOURCE_EID - Source chain endpoint ID (e.g., Ethereum)
  */
-contract Configure_DVNs_Adapter is BaseScript {
+contract Configure_DVNs_Adapter is Script {
     // LayerZero DVN addresses on SEI
     // Update these with actual SEI chain DVN addresses
     address public constant LZ_DVN = 0x6788f52439ACA6BFF597d3eeC2DC9a44B8FEE842; // LayerZero DVN
@@ -52,40 +52,42 @@ contract Configure_DVNs_Adapter is BaseScript {
     }
 
 
-    function run() public broadcast {
-        console.log("\n=== Configuring DVNs for MultichainDepositAdapter ===\n");
+    function run() public {
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        address deployer = vm.addr(deployerPrivateKey);
+
+        console.log("\n=== Configuring DVNs for CrosschainDepositAdapter ===\n");
 
         // Get configuration from environment
-        address adapterAddress = vm.envAddress("SEI_LZ_ADAPTER_ADDRESS");
-        address endpoint = vm.envAddress("LAYERZERO_ENDPOINT_V2");
-        address receiveUln302 = vm.envAddress("RECEIVE_ULN_302");
-        uint32 sourceEid = uint32(vm.envOr("SOURCE_EID", uint256(ETH_EID)));
+        address adapterAddress = vm.envAddress("LZ_CROSSCHAIN_ADAPTER_ADDRESS");
+        address endpoint = vm.envAddress("LZ_ENDPOINT_V2");
+        address receiveUln302 = vm.envAddress("LZ_RECEIVE_ULN_302");
+        uint32 sourceEid = uint32(vm.envOr("LZ_SOURCE_EID", uint256(ETH_EID)));
 
         console.log("Configuration:");
+        console.log("  Deployer:", deployer);
         console.log("  Adapter:", adapterAddress);
         console.log("  Endpoint:", endpoint);
         console.log("  ReceiveUln302:", receiveUln302);
         console.log("  Source EID:", sourceEid);
         console.log("");
 
-        MultichainDepositAdapter adapter = MultichainDepositAdapter(payable(adapterAddress));
+        CrosschainDepositAdapter adapter = CrosschainDepositAdapter(payable(adapterAddress));
 
         // Verify we're the owner
         address owner = adapter.owner();
-        require(owner == broadcaster, "Caller is not adapter owner");
+        require(owner == deployer, "Caller is not adapter owner");
         console.log("Owner verified:", owner);
+
+        vm.startBroadcast(deployerPrivateKey);
 
         // Configure DVNs for receiving messages from source chain
         _configureDVNs(endpoint, receiveUln302, adapterAddress, sourceEid);
 
+        vm.stopBroadcast();
+
         console.log("\n=== DVN Configuration Complete ===\n");
-        console.log("Next steps:");
-        console.log("1. Verify DVN config:");
-        // console.log("cast call", endpoint, "\"getConfig(address,address,uint32,uint32)(bytes)\"",
-        //     adapterAddress, receiveUln302, sourceEid, CONFIG_TYPE_ULN);
-        console.log("");
-        console.log("2. Test cross-chain deposit from source chain");
-        console.log("");
+       
     }
 
     /**
@@ -176,6 +178,10 @@ contract Configure_DVNs_Adapter is BaseScript {
         }
 
         console.log("\nAll chains configured");
+    }
+
+    function test() public {
+        // Required for forge coverage to work
     }
 }
 
