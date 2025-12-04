@@ -1,59 +1,264 @@
-# Elitra Core - ERC-4626 Vault System
+# Elitra Core - System Architecture
 
-2025-11-10
-
-## Executive Summary
-
-Elitra Core is a **simple ERC-4626 vault system** with oracle-based balance aggregation and async redemption.
-
-**Core Features:**
-
-- Standard ERC-4626 vault interface
-- Async redemption queue for smooth liquidity management
-- Oracle-based balance aggregation with 1% auto-pause safety
-- Role-based access control
-- Pluggable redemption strategies
-
----
+A cross-chain ERC-4626 vault system with LayerZero integration for multi-chain yield strategies.
 
 ## Table of Contents
 
-1. [System Architecture](#1-system-architecture)
-2. [Core Vault Components](#2-core-vault-components)
-3. [User Flows](#3-user-flows)
-4. [Technical Specifications](#4-technical-specifications)
-5. [Security Considerations](#5-security-considerations)
+1. [System Overview](#1-system-overview)
+2. [Manage Security](#2-manage-security)
+3. [Oracle System](#3-oracle-system)
+4. [Deposit & Withdraw Queue](#4-deposit--withdraw-queue)
+5. [Cross-chain Deposit Design](#5-cross-chain-deposit-design)
 
 ---
 
-## 1. System Architecture
-
-### 1.1 High-Level System Design
+## 1. System Overview
 
 ```mermaid
 graph TB
-    Users["Users"]
+    subgraph "Hub Chain (SEI)"
+        Users[Users]
 
-    Vault["ElitraVault (ERC4626)<br/><br/>• deposit() / mint()<br/>• requestRedeem() / claimRedeem()<br/>• Async redemption queue<br/>• Oracle balance aggregation<br/>• Role-based access control"]
+        subgraph "Vault Layer"
+            Vault[ElitraVault<br/>ERC-4626]
+            Oracle[Balance Update Hook<br/>Oracle Adapter]
+            Redemption[Redemption Hook<br/>Queue Strategy]
+        end
 
-    Oracle["Oracle Adapter<br/><br/>• Updates aggregated balance<br/>• Monitors off-chain positions"]
+        subgraph "Cross-chain Deposit"
+            DepositAdapter[CrosschainDepositAdapter<br/>Receives bridged funds]
+            DepositQueue[CrosschainDepositQueue<br/>Failed deposit handling]
+        end
 
-    Redemption["Redemption Strategy<br/><br/>• Instant mode<br/>• Queue mode<br/>• Escrow mode"]
+        subgraph "Cross-chain Strategy"
+            StrategyAdapter[CrosschainStrategyAdapter<br/>Sends to remote chains]
+        end
+    end
 
-    Users -->|"deposit() / mint()"| Vault
-    Users -->|"requestRedeem()"| Vault
-    Users -->|"claimRedeem()"| Vault
+    subgraph "Remote Chains (ETH, ARB)"
+        SubVault[SubVault<br/>Holds assets]
+        Strategies[Yield Strategies<br/>Aave, Compound, etc]
+    end
 
-    Oracle -->|"setAggregatedBalance()"| Vault
-    Vault -->|"Check mode"| Redemption
+    Users -->|deposit/redeem| Vault
+    Oracle -->|updateBalance| Vault
+    Vault -->|beforeRedeem| Redemption
+
+    DepositAdapter -->|deposit| Vault
+    DepositAdapter -->|failed deposits| DepositQueue
+
+    Vault -->|manage| StrategyAdapter
+    StrategyAdapter -->|LZ OFT| SubVault
+    SubVault -->|manage| Strategies
 
     style Vault fill:#90EE90,stroke:#333,stroke-width:3px
-    style Users fill:#FFB6C1,stroke:#333,stroke-width:2px
-    style Oracle fill:#FFE4B5,stroke:#333,stroke-width:2px
-    style Redemption fill:#E6E6FA,stroke:#333,stroke-width:2px
+    style DepositAdapter fill:#FFD700,stroke:#333,stroke-width:2px
+    style SubVault fill:#87CEEB,stroke:#333,stroke-width:2px
 ```
 
-### 1.2 Deposit Flow
+---
+
+## 2. Manage Security
+
+The `manage()` function allows operators to execute vault strategy operations. A **guard-per-target architecture** ensures security through fail-closed validation.
+
+### 2.1 Security Layers
+
+```mermaid
+graph TB
+    subgraph "Security Layers"
+        L1[Layer 1: Authorization<br/>requiresAuth modifier]
+        L2[Layer 2: Guard Existence<br/>guards target != 0]
+        L3[Layer 3: Function Whitelist<br/>selector validation]
+        L4[Layer 4: Parameter Validation<br/>argument checks]
+        L5[Layer 5: Protocol Rules<br/>business logic]
+    end
+
+    L1 --> L2
+    L2 --> L3
+    L3 --> L4
+    L4 --> L5
+    L5 --> EXEC[Safe Execution]
+
+    L1 -.->|Bypass| F1[Unauthorized]
+    L2 -.->|Bypass| F2[No Guard]
+    L3 -.->|Bypass| F3[Wrong Function]
+    L4 -.->|Bypass| F4[Invalid Params]
+    L5 -.->|Bypass| F5[Rule Violation]
+
+    style EXEC fill:#90EE90
+    style F1 fill:#FF6B6B
+    style F2 fill:#FF6B6B
+    style F3 fill:#FF6B6B
+    style F4 fill:#FF6B6B
+    style F5 fill:#FF6B6B
+```
+
+### 2.2 Guard-per-Target Architecture
+
+```mermaid
+graph TB
+    subgraph VaultBase
+        VM[guards mapping]
+    end
+
+    subgraph "Target → Guard Mapping"
+        T1[WETH Contract]
+        T2[YEI Protocol]
+        T3[DEX Router]
+        T4[USDC Token]
+
+        G1[AllowAllGuard<br/>All functions]
+        G2[YieldGuard<br/>stake/unstake/claim]
+        G3[SwapGuard<br/>swap/addLiquidity]
+        G4[TokenGuard<br/>approve whitelist]
+    end
+
+    VM -.->|maps| T1
+    VM -.->|maps| T2
+    VM -.->|maps| T3
+    VM -.->|maps| T4
+
+    T1 --> G1
+    T2 --> G2
+    T3 --> G3
+    T4 --> G4
+
+    style G1 fill:#90EE90
+    style G2 fill:#FFD700
+    style G3 fill:#FFA500
+    style G4 fill:#FF6B6B
+```
+
+### 2.3 Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant VaultBase
+    participant Guard
+    participant Target
+
+    Operator->>VaultBase: manage(target, data, value)
+
+    VaultBase->>VaultBase: Check requiresAuth
+    alt Not authorized
+        VaultBase-->>Operator: Revert: Unauthorized
+    end
+
+    VaultBase->>VaultBase: Lookup guards[target]
+    alt No guard exists
+        VaultBase-->>Operator: Revert: No Guard (Fail-Closed)
+    end
+
+    VaultBase->>Guard: validate(msg.sender, data, value)
+    Guard->>Guard: Parse function selector
+    Guard->>Guard: Validate parameters
+    Guard->>Guard: Check protocol rules
+
+    alt Validation failed
+        Guard-->>VaultBase: return false
+        VaultBase-->>Operator: Revert: Validation Failed
+    end
+
+    Guard-->>VaultBase: return true
+    VaultBase->>Target: functionCallWithValue(data, value)
+    Target-->>VaultBase: result
+    VaultBase-->>Operator: return result
+```
+
+### 2.4 Guard Types
+
+| Guard Type | Purpose | Example Rules |
+|------------|---------|---------------|
+| `AllowAllGuard` | Trusted contracts | All functions allowed |
+| `TokenGuard` | ERC20 operations | Approve only whitelisted spenders |
+| `YieldGuard` | Yield protocols | stake/unstake/claim with limits |
+| `SwapGuard` | DEX operations | swap/addLiquidity with slippage checks |
+
+---
+
+## 3. Oracle System
+
+The oracle system aggregates balances from external protocols and updates the vault's price per share.
+
+### 3.1 Balance Update Flow
+
+```mermaid
+sequenceDiagram
+    participant Oracle as Oracle Bot
+    participant Hook as BalanceUpdateHook
+    participant Vault as ElitraVault
+
+    Note over Oracle,Vault: Oracle monitors external protocol balances
+
+    Oracle->>Vault: updateBalance(newAggregatedBalance)
+
+    Vault->>Vault: Check block.number > lastBlockUpdated
+    alt Already updated this block
+        Vault-->>Oracle: Revert: Already Updated
+    end
+
+    Vault->>Hook: beforeBalanceUpdate(lastPPS, totalSupply, idleBalance, newBalance)
+    Hook->>Hook: Calculate new PPS
+    Hook->>Hook: Check price change threshold
+
+    alt Price change > 1%
+        Hook-->>Vault: (shouldContinue: false, newPPS)
+        Vault->>Vault: _pause()
+        Vault-->>Oracle: Emit VaultPausedDueToThreshold
+    else Price change <= 1%
+        Hook-->>Vault: (shouldContinue: true, newPPS)
+        Vault->>Vault: Update aggregatedUnderlyingBalances
+        Vault->>Vault: Update lastPricePerShare
+        Vault->>Vault: Update lastBlockUpdated
+        Vault-->>Oracle: Emit PPSUpdated
+    end
+```
+
+### 3.2 Price Per Share Calculation
+
+```mermaid
+graph LR
+    subgraph "Total Assets"
+        Idle[Idle Balance<br/>IERC20.balanceOf vault]
+        External[Aggregated External<br/>aggregatedUnderlyingBalances]
+    end
+
+    Idle --> Sum[Total Assets]
+    External --> Sum
+
+    Sum --> PPS[Price Per Share]
+    Supply[Total Supply] --> PPS
+
+    PPS --> |totalAssets / totalSupply| Result[Share Price]
+
+    style Sum fill:#90EE90
+    style Result fill:#FFD700
+```
+
+### 3.3 Auto-Pause Mechanism
+
+The vault automatically pauses if price per share changes by more than 1% in a single update:
+
+```
+priceChange = |newPPS - lastPPS| / lastPPS
+
+if priceChange > 1%:
+    vault.pause()
+    emit VaultPausedDueToThreshold
+```
+
+**Protection Against:**
+- Oracle manipulation
+- Sudden strategy losses
+- Flash loan attacks
+
+---
+
+## 4. Deposit & Withdraw Queue
+
+### 4.1 Deposit Flow
 
 ```mermaid
 sequenceDiagram
@@ -62,186 +267,303 @@ sequenceDiagram
 
     Note over User,Vault: Standard ERC-4626 Deposit
 
-    User->>Vault: approve(1000 USDC)
-    User->>Vault: deposit(1000, receiver)
+    User->>Vault: approve(asset, amount)
+    User->>Vault: deposit(assets, receiver)
 
-    Vault->>Vault: Transfer USDC from user
-    Vault->>Vault: Calculate shares (e.g., 995)
-    Vault->>Vault: Mint 995 shares for receiver
+    Vault->>Vault: Check whenNotPaused
+    Vault->>Vault: Transfer assets from user
+    Vault->>Vault: Calculate shares = assets / PPS
+    Vault->>Vault: Mint shares to receiver
 
-    Vault-->>User: Return 995 shares
-
-    Note over User,Vault: User has 995 vault shares
+    Vault-->>User: Return shares minted
 ```
 
-### 1.3 Redemption Flow
+### 4.2 Redemption Flow
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Vault as ElitraVault
-    participant Strategy as RedemptionStrategy
+    participant Hook as RedemptionHook
 
-    Note over User,Vault: Async Redemption Flow
+    User->>Vault: requestRedeem(shares, receiver, owner)
 
-    User->>Vault: requestRedeem(100 shares, receiver)
-    Vault->>Strategy: checkRedemption(assets, shares)
+    Vault->>Vault: Validate shares > 0
+    Vault->>Vault: Validate owner == msg.sender
+    Vault->>Vault: Calculate assets = previewRedeem(shares)
 
-    alt Instant Mode
-        Strategy-->>Vault: INSTANT
-        Vault->>Vault: Burn shares & transfer assets
-        Vault-->>User: Return assets immediately
-    else Queue/Escrow Mode
-        Strategy-->>Vault: QUEUE or ESCROW
+    Vault->>Hook: beforeRedeem(vault, shares, assets, owner, receiver)
+    Hook->>Hook: Check available liquidity
+
+    alt Sufficient Liquidity
+        Hook-->>Vault: (INSTANT, actualAssets)
+        Vault->>Vault: Burn shares
+        Vault->>Vault: Transfer assets to receiver
+        Vault-->>User: Return assets (instant)
+    else Insufficient Liquidity
+        Hook-->>Vault: (QUEUED, actualAssets)
+        Vault->>Vault: Transfer shares to vault (escrow)
+        Vault->>Vault: Update totalPendingAssets
         Vault->>Vault: Store pending request
-        Vault-->>User: Emit RedeemRequested event
-
-        Note over User,Vault: Wait for fulfillment...
-
-        User->>Vault: claimRedeem()
-        Vault->>Vault: Burn shares & transfer assets
-        Vault-->>User: Return claimable assets
+        Vault-->>User: Emit RedeemRequest (queued)
     end
 ```
 
----
+### 4.3 Queue Fulfillment
 
-## 2. Core Vault Components
+```mermaid
+sequenceDiagram
+    participant Operator
+    participant Vault as ElitraVault
+    participant User
 
-### 2.1 ElitraVault
+    Note over Operator,Vault: Operator withdraws from strategies
 
-**Key Features:**
+    Operator->>Vault: manage(...) withdraw from strategy
 
-- Standard ERC-4626 vault interface
-- Single asset type per vault (USDC, USDe, etc.)
-- Async redemption queue with pluggable strategies
-- Oracle-based balance aggregation
-- Auto-pause on price changes > 1%
-- Role-based access control
+    Note over Operator,Vault: Fulfill pending redemptions
 
-**Key Functions:**
+    Operator->>Vault: fulfillRedeem(receiver, shares, assets)
 
-```solidity
-// Standard ERC-4626
-function deposit(uint256 assets, address receiver) returns (uint256 shares);
-function mint(uint256 shares, address receiver) returns (uint256 assets);
+    Vault->>Vault: Validate pending request exists
+    Vault->>Vault: Update pending.shares -= shares
+    Vault->>Vault: Update pending.assets -= assets
+    Vault->>Vault: Update totalPendingAssets -= assets
 
-// Async redemption
-function requestRedeem(uint256 shares, address receiver, address owner) returns (uint256);
-function claimRedeem() returns (uint256 assets);
-function fulfillRedeem(address receiver, uint256 shares, uint256 assets);
+    Vault->>Vault: Burn escrowed shares
+    Vault->>User: Transfer assets
 
-// Oracle integration
-function setAggregatedBalance(uint256 newBalance, uint256 newPPS);
-
-// Strategy management
-function manage(address target, bytes calldata data, uint256 value) returns (bytes memory);
+    Vault-->>Operator: Emit RequestFulfilled
 ```
 
-### 2.2 Oracle Adapter
+### 4.4 Redemption States
 
-**Purpose:** Updates vault's aggregated balance from off-chain positions
+```mermaid
+stateDiagram-v2
+    [*] --> RequestReceived: requestRedeem()
 
-**Key Features:**
+    RequestReceived --> InstantRedeem: Sufficient liquidity
+    RequestReceived --> Queued: Insufficient liquidity
 
-- Monitors vault positions across strategies
-- Reports total underlying balance to vault
-- Triggers auto-pause if price change > 1%
+    InstantRedeem --> [*]: Assets transferred
 
-### 2.3 Redemption Strategy
+    Queued --> Fulfilled: fulfillRedeem()
+    Queued --> Cancelled: cancelRedeem()
 
-**Purpose:** Determines redemption mode (instant or queue)
-
-**Modes:**
-
-- **INSTANT:** Sufficient liquidity available, redeem immediately
-- **QUEUE:** Insufficient liquidity, queue request for later fulfillment
-
----
-
-## 3. User Flows
-
-### 3.1 Deposit Flow
-
-1. User approves vault asset (e.g., USDC) to vault
-2. User calls `vault.deposit(assets, receiver)`
-3. Vault transfers assets from user
-4. Vault calculates and mints shares based on current price per share
-5. User receives vault shares
-
-### 3.2 Redemption Flow
-
-#### Instant Redemption
-
-1. User calls `vault.requestRedeem(shares, receiver, owner)`
-2. Redemption strategy checks liquidity → returns INSTANT mode
-3. Vault burns shares and transfers assets immediately
-4. User receives assets
-
-#### Queued Redemption
-
-1. User calls `vault.requestRedeem(shares, receiver, owner)`
-2. Redemption strategy checks liquidity → returns QUEUE mode
-3. Vault stores pending redemption request
-4. Emits `RedeemRequested` event
-5. Operator withdraws from strategies and calls `fulfillRedeem()`
-6. User calls `claimRedeem()` to receive assets
-
-### 3.3 Strategy Management
-
-Operators can deploy vault assets to yield strategies using the `manage()` function:
-
-```solidity
-vault.manage(
-    target: StrategyContract,
-    data: abi.encodeCall(Strategy.deposit, (assets)),
-    value: 0
-)
-```
-
-**Access Control:** Only authorized operators can call `manage()`. The vault checks permissions via the Authority contract.
-
-**Oracle Updates:** After deploying assets, the oracle monitors strategy balances and reports the aggregated total back to the vault via `setAggregatedBalance()`.
-
-**Share Price Formula:**
-```
-sharePrice = (idleAssets + aggregatedUnderlyingBalances) / totalShares
+    Fulfilled --> [*]: Assets transferred
+    Cancelled --> [*]: Shares returned
 ```
 
 ---
 
-## 4. Technical Specifications
+## 5. Cross-chain Deposit Design
 
-### 4.1 Auto-Pause Mechanism
+### 5.1 Architecture Overview
 
-The vault automatically pauses deposits/withdrawals if the price per share changes by more than 1% in a single oracle update:
+```mermaid
+graph TB
+    subgraph "Source Chain (Ethereum, Arbitrum, etc)"
+        User[User Wallet]
+        OFT[LayerZero OFT<br/>SEI Token]
+    end
+
+    Bridge[LayerZero<br/>Cross-chain Bridge]
+
+    subgraph "Hub Chain (SEI)"
+        subgraph "Deposit System"
+            Adapter[CrosschainDepositAdapter<br/>Receives OFT compose]
+            Queue[CrosschainDepositQueue<br/>Failed deposits]
+        end
+
+        Vault[ElitraVault]
+    end
+
+    User -->|1. Send OFT with compose msg| OFT
+    OFT -->|2. Bridge tokens + payload| Bridge
+    Bridge -->|3. lzCompose callback| Adapter
+
+    Adapter -->|4a. Success: deposit| Vault
+    Adapter -->|4b. Failure: queue| Queue
+
+    Vault -->|5. Mint shares| User
+
+    style Adapter fill:#FFD700,stroke:#333,stroke-width:2px
+    style Queue fill:#FF6B6B,stroke:#333,stroke-width:2px
+    style Vault fill:#90EE90,stroke:#333,stroke-width:2px
+```
+
+### 5.2 Compose Message Format
 
 ```solidity
-uint256 priceChange = newPPS > lastPPS
-    ? (newPPS - lastPPS) * DENOMINATOR / lastPPS
-    : (lastPPS - newPPS) * DENOMINATOR / lastPPS;
+// User sends OFT with compose message containing:
+bytes memory composeMsg = abi.encode(
+    vault,        // Target vault address
+    receiver,     // Who receives shares
+    minAmountOut, // Slippage protection
+    zapCalls      // Optional zap operations (e.g., wrap WSEI)
+);
+```
 
-if (priceChange > MAX_PERCENTAGE) {
-    _pause();
+### 5.3 Deposit Flow with Zapping
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant OFT as LayerZero OFT
+    participant LZ as LayerZero Endpoint
+    participant Adapter as CrosschainDepositAdapter
+    participant Zap as Zap Target (WSEI)
+    participant Vault as ElitraVault
+    participant Queue as DepositQueue
+
+    User->>OFT: send(SEI, composeMsg)
+    OFT->>LZ: Bridge tokens + compose message
+
+    LZ->>Adapter: lzCompose(_from, _guid, _message)
+
+    Adapter->>Adapter: Validate OFT supported
+    Adapter->>Adapter: Decode compose message
+    Adapter->>Adapter: Record deposit (Pending)
+
+    alt Has Zap Calls
+        Adapter->>Zap: Execute zap (e.g., WSEI.deposit())
+        Zap-->>Adapter: Vault asset received
+    end
+
+    Adapter->>Adapter: try processDeposit()
+
+    alt Deposit Success
+        Adapter->>Vault: deposit(amount, receiver)
+        Vault-->>Adapter: shares minted
+        Adapter->>Adapter: Status = Success
+        Adapter-->>User: Emit DepositSuccess
+    else Deposit Failed
+        Adapter->>Adapter: Get current share price
+        Adapter->>Queue: recordFailedDeposit(user, token, amount, sharePrice)
+        Queue->>Queue: Transfer tokens from adapter
+        Queue->>Queue: Store failed deposit record
+        Adapter->>Adapter: Status = Queued
+        Adapter-->>User: Emit DepositQueued
+    end
+```
+
+### 5.4 Failed Deposit Handling
+
+```mermaid
+graph TB
+    subgraph "Deposit Attempt"
+        Receive[Receive bridged tokens]
+        Zap[Execute zap calls]
+        Deposit[Deposit to vault]
+    end
+
+    subgraph "Failure Handling"
+        Queue[CrosschainDepositQueue]
+        Record[Record failed deposit<br/>+ share price at failure]
+    end
+
+    subgraph "Resolution"
+        Operator[Operator]
+        Resolve[resolveFailedDeposit]
+        Refund[Refund tokens to user]
+    end
+
+    Receive --> Zap
+    Zap -->|Success| Deposit
+    Zap -->|Failure| Queue
+    Deposit -->|Success| Success[User gets shares]
+    Deposit -->|Failure| Queue
+
+    Queue --> Record
+
+    Operator --> Resolve
+    Resolve --> Refund
+
+    style Success fill:#90EE90
+    style Queue fill:#FF6B6B
+    style Refund fill:#FFD700
+```
+
+### 5.5 Queue Data Structure
+
+```solidity
+struct FailedDeposit {
+    address user;           // Who should receive shares/refund
+    uint32 srcEid;          // Source chain endpoint ID
+    address token;          // Bridged token address
+    uint256 amount;         // Amount of tokens
+    address vault;          // Target vault
+    bytes32 guid;           // LayerZero message GUID
+    bytes failureReason;    // Why deposit failed
+    uint256 timestamp;      // When failure occurred
+    uint256 sharePrice;     // PPS at time of failure
+    DepositStatus status;   // Failed | Resolved
 }
 ```
 
-This protects users from oracle manipulation or sudden strategy losses.
+### 5.6 Deployment Flow
 
-### 4.2 Security Features
+```mermaid
+sequenceDiagram
+    participant Deployer
+    participant Queue as CrosschainDepositQueue
+    participant Adapter as CrosschainDepositAdapter
 
-- Role-based access control for sensitive operations
-- Pausable deposits/mints/redemptions
-- One oracle update per block maximum
-- Async redemption queue prevents bank runs
-- ERC-4626 standard compliance for composability
+    Note over Deployer,Adapter: Step 1: Deploy Queue
+    Deployer->>Queue: Deploy implementation
+    Deployer->>Queue: Deploy proxy + initialize(owner)
+
+    Note over Deployer,Adapter: Step 2: Deploy Adapter
+    Deployer->>Adapter: Deploy implementation(lzEndpoint)
+    Deployer->>Adapter: Deploy proxy + initialize(owner, queueAddress)
+
+    Note over Deployer,Adapter: Step 3: Link Queue to Adapter
+    Deployer->>Queue: setAdapter(adapterAddress)
+
+    Note over Deployer,Adapter: Step 4: Configure
+    Deployer->>Adapter: setSupportedOFT(token, oft, true)
+    Deployer->>Adapter: setSupportedVault(vault, true)
+    Deployer->>Adapter: Configure DVNs
+```
+
+### 5.7 Security Features
+
+| Feature | Description |
+|---------|-------------|
+| **OFT Whitelist** | Only approved OFTs can trigger deposits |
+| **Vault Whitelist** | Only approved vaults can receive deposits |
+| **Slippage Protection** | `minAmountOut` prevents front-running |
+| **Failed Deposit Queue** | No fund loss on failures |
+| **Share Price Snapshot** | Records PPS at failure for fair resolution |
+| **Pausable** | Admin can pause all operations |
+| **Reentrancy Guard** | Protected against reentrancy |
 
 ---
 
-## 5. Security Considerations
+## Project Structure
 
-- **Oracle Security:** The oracle adapter is a trusted role. Ensure proper access control and monitoring.
-- **Strategy Risk:** Assets deployed to strategies carry smart contract risk. Only use audited strategies.
-- **Redemption Queue:** Users should understand that redemptions may not be instant during low liquidity periods.
-- **Auto-Pause:** While protective, false positives could temporarily lock user funds. Monitor oracle reliability.
-- **Access Control:** Carefully configure the Authority contract to prevent unauthorized `manage()` calls.
+```
+elitra-core/
+├── src/
+│   ├── ElitraVault.sol                    # Main ERC-4626 vault
+│   ├── adapters/layerzero/
+│   │   ├── CrosschainDepositAdapter.sol   # Receives cross-chain deposits
+│   │   ├── CrosschainDepositQueue.sol     # Handles failed deposits
+│   │   └── CrosschainStrategyAdapter.sol  # Sends funds to remote chains
+│   ├── vault/
+│   │   ├── VaultBase.sol                  # Base with auth & guards
+│   │   └── SubVault.sol                   # Remote chain vault
+│   ├── guards/                            # Transaction guards
+│   ├── hooks/                             # Oracle & redemption hooks
+│   └── interfaces/
+├── script/
+│   ├── crosschain-deposit/                # Deposit system scripts
+│   ├── crosschain/                        # Strategy scripts
+│   └── deploy/                            # Vault deployment
+├── config/                                # Chain configs
+└── specs/                                 # Detailed specifications
+```
+
+## License
+
+MIT License - see [LICENSE.md](LICENSE.md)
