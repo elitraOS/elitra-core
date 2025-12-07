@@ -1,30 +1,22 @@
-# WSEI contract guard
+# WSEI Token Guard
 
-## Target contract address
+## Target Contract
+- **Address**: `0xE30feDd158A2e3b13e9badaeABaFc5516e95e8C7`
 
-0xE30feDd158A2e3b13e9badaeABaFc5516e95e8C7
-
-## Allowed function abi parameters
-
-### deposit
-
-```solidity
-deposit(amount uint256, to address)
-```
-
-### withdraw
-
-```solidity
-withdraw(amount uint256, to address)
-```
+## Allowed Functions
 
 ### approve
-
 ```solidity
-approve(spender address, amount uint256)
+approve(address spender, uint256 amount)
 ```
+**Selector**: `0x095ea7b3`
 
-List allowed spenders addresses here:
+| Parameter | Validation |
+|-----------|------------|
+| `spender` | Must be whitelisted |
+| `amount` | - |
 
-- CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS
--
+### Whitelisted Spenders
+- Yei Pool: `0x4a4d9abD36F923cBA0Af62A39C01dEC2944fb638`
+- Takara SEI Pool: `0xA26b9BFe606d29F16B5Aecf30F9233934452c4E2`
+- Morpho SEI Vault: `0x948FcC6b7f68f4830Cd69dB1481a9e1A142A4923`
