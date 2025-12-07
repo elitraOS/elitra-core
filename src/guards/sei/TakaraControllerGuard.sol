@@ -8,7 +8,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 /// @author Elitra
 /// @notice Guard for Takara Comptroller reward claiming operations.
 /// @dev Only allows claimReward function calls.
-contract TakaraComptrollerGuard is ITransactionGuard, Ownable {
+contract TakaraControllerGuard is ITransactionGuard, Ownable {
     /// @notice claimReward() selector
     bytes4 public constant CLAIM_REWARD_SELECTOR = 0xb88a802f;
 

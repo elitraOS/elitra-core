@@ -1,0 +1,1 @@
+forge script script/guard-deploy/Deploy_TakaraGuards.s.sol --rpc-url $RPC_URL --broadcast --verify

@@ -35,7 +35,7 @@
 - **Takara Pool (per-asset)**
   - **SEI pool**: `0xA26b9BFe606d29F16B5Aecf30F9233934452c4E2`
   - **USDC pool**: `0xd1E6a6F58A29F64ab2365947ACb53EfEB6Cc05e0`
-- **Takara Comptroller**
+- **Takara Controller**
   - **SEI, USDC**: `0x71034bf5eC0FAd7aEE81a213403c8892F3d8CAeE`
 - **Invest (mint)** – `generateDepositCalldata`
   - Step 1 
