@@ -28,3 +28,21 @@ withdraw(uint256 assets, address receiver, address owner)
 | `assets` | - |
 | `receiver` | Must be vault address |
 | `owner` | Must be vault address |
+
+---
+
+## Action Flows
+
+### Deposit (Invest)
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Asset Token (WSEI/USDC) | `approve(address,uint256)` | `spender` = Morpho Vault, `amount` = deposit amount |
+| 2 | Morpho Vault | `deposit(uint256,address)` | `assets` = amount, `receiver` = vault |
+
+### Withdraw
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Morpho Vault | `withdraw(uint256,address,address)` | `assets` = amount, `receiver` = vault, `owner` = vault |
+
+### Rewards
+- **Not implemented yet**

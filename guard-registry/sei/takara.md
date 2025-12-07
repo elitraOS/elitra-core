@@ -47,3 +47,23 @@ claimReward()
 | Parameter | Validation |
 |-----------|------------|
 | - | No parameters |
+
+---
+
+## Action Flows
+
+### Deposit (Invest/Mint)
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Asset Token (WSEI/USDC) | `approve(address,uint256)` | `spender` = Takara Pool, `amount` = mint amount |
+| 2 | Takara Pool | `mint(uint256)` | `mintAmount` = amount |
+
+### Withdraw (Redeem)
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Takara Pool | `redeem(uint256)` | `redeemAmount` = amount |
+
+### Claim Rewards
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Takara Controller | `claimReward()` | - |

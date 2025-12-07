@@ -52,3 +52,23 @@ claimAllRewardsToSelf(address[] assets)
 | Parameter | Validation |
 |-----------|------------|
 | `assets` | All assets must be whitelisted |
+
+---
+
+## Action Flows
+
+### Deposit (Invest)
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Asset Token (WSEI/USDC) | `approve(address,uint256)` | `spender` = Yei Pool, `amount` = deposit amount |
+| 2 | Yei Pool | `supply(address,uint256,address,uint16)` | `asset` = token, `amount` = deposit amount, `onBehalfOf` = vault, `referralCode` = 0 |
+
+### Withdraw
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Yei Pool | `withdraw(address,uint256,address)` | `asset` = token, `amount` = withdraw amount, `to` = vault |
+
+### Claim Rewards
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Yei Incentives Controller | `claimAllRewardsToSelf(address[])` | `assets` = [token addresses] |
