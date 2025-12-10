@@ -1,0 +1,1 @@
+forge script script/guard-deploy/Deploy_YeiGuards.s.sol --rpc-url $RPC_URL --broadcast --verify --verifier $VERIFIER_TYPE --verifier-url $VERIFIER_URL --etherscan-api-key $ETHERSCAN_API_KEY --chain-id $CHAIN_ID --force -vvvv
