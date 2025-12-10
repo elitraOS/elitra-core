@@ -31,6 +31,29 @@ withdraw(uint256 assets, address receiver, address owner)
 
 ---
 
+## Merkl Distributor Guard
+
+### Target Contract
+- **Address**: `0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae`
+- **Supported Assets**: SEI, USDC
+
+### Allowed Functions
+
+#### claim
+```solidity
+claim(address[] users,address[] tokens,uint256[] amounts,bytes32[][] proofs)
+```
+**Selector**: `0x71ee95c0`
+
+| Parameter | Validation |
+|-----------|------------|
+| `address` | User addresses |
+| `tokens` | Assets to claim |
+| `amounts` | Amounts to claim |
+| `proofs` | Merkl Proof |
+
+---
+
 ## Action Flows
 
 ### Deposit (Invest)
@@ -44,5 +67,8 @@ withdraw(uint256 assets, address receiver, address owner)
 |------|--------|----------|------|
 | 1 | Morpho Vault | `withdraw(uint256,address,address)` | `assets` = amount, `receiver` = vault, `owner` = vault |
 
-### Rewards
-- **Not implemented yet**
+### Claim Rewards
+| Step | Target | Function | Args |
+|------|--------|----------|------|
+| 1 | Merkl Distributor | `claim(address[],address[],uint256[],bytes32[][])` | `address` = [vault addresses], `tokens` = [token addresses], `amounts` = [claimable amounts], `proofs` = [merkl proof] |
+
