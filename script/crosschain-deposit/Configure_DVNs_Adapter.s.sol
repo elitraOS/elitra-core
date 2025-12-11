@@ -59,7 +59,7 @@ contract Configure_DVNs_Adapter is Script {
         console.log("\n=== Configuring DVNs for CrosschainDepositAdapter ===\n");
 
         // Get configuration from environment
-        address adapterAddress = vm.envAddress("LZ_CROSSCHAIN_ADAPTER_ADDRESS");
+        address adapterAddress = vm.envAddress("LZ_CROSSCHAIN_DEPOSIT_ADAPTER_ADDRESS");
         address endpoint = vm.envAddress("LZ_ENDPOINT_V2");
         address receiveUln302 = vm.envAddress("LZ_RECEIVE_ULN_302");
         uint32 sourceEid = uint32(vm.envOr("LZ_SOURCE_EID", uint256(ETH_EID)));

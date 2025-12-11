@@ -1,4 +1,6 @@
 echo "Sourcing the hub main"
+source config/sei/wsei/hub/bridge.sh
+source config/sei/wsei/hub/lz.sh
 ## Token name and symbol, addresses 
 export NAME="Elitra WSEI Vault"
 export SYMBOL="eWSEI"
