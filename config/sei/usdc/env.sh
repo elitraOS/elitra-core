@@ -1,6 +1,5 @@
 ## Load hub config
 source config/sei/usdc/hub/main.sh
-source config/sei/usdc/hub/hub-config.sh
 
 
 export CURRENT_REMOTE=eth

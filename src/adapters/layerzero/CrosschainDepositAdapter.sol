@@ -49,7 +49,7 @@ contract CrosschainDepositAdapter is
     )
         external
         payable
-        override(IOAppComposer)
+        override
         whenNotPaused
         nonReentrant
     {
@@ -100,7 +100,7 @@ contract CrosschainDepositAdapter is
     // ================== OVERRIDES ==================
 
     // Conflict Resolution for Multiple Inheritance
-    function _authorizeUpgrade(address newImpl) internal override(BaseCrosschainDepositAdapter, OAppUpgradeable) onlyOwner {}
+    function _authorizeUpgrade(address newImpl) internal override onlyOwner {}
     
     // OApp requires implementation of _lzReceive but we only use compose
     function _lzReceive(Origin calldata, bytes32, bytes calldata, address, bytes calldata) internal pure override {

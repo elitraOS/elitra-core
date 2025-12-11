@@ -60,5 +60,15 @@ contract ZapExecutor {
             IERC20(tokenIn).safeTransfer(receiver, remaining);
         }
     }
+
+    /// @notice contract is design to be stateless -> allow anyone to sweep any dust token that is in the contract
+    function sweepToken(address token) external {
+        IERC20(token).safeTransfer(msg.sender, IERC20(token).balanceOf(address(this)));
+    }
+
+    /// @notice contract is design to be stateless -> allow anyone to sweep any dust native that is in the contract
+    function sweepNative() external {
+        payable(msg.sender).transfer(address(this).balance);
+    }
 }
 

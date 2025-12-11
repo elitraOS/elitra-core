@@ -145,6 +145,14 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
     }
 
     /**
+     * @notice CCTP doesn't use OFTs - this function is not applicable
+     * @dev Required by ICrosschainDepositAdapter interface but not used in CCTP
+     */
+    function setSupportedOFT(address, address, bool) external pure {
+        revert("CCTP does not use OFTs");
+    }
+
+    /**
      * @notice Allow contract to receive ETH (should not happen for pure USDC ops but good for safety)
      */
     receive() external payable { }

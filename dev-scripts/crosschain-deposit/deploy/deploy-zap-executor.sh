@@ -1,5 +1,4 @@
-# Run the deployment script
-forge script script/crosschain-deposit/Deploy_CrosschainDepositQueue.s.sol \
+forge script script/crosschain-deposit/Deploy_ZapExecutor.s.sol \
     --rpc-url $RPC_URL \
     --broadcast \
     --compiler-version 0.8.28 \
@@ -8,6 +7,5 @@ forge script script/crosschain-deposit/Deploy_CrosschainDepositQueue.s.sol \
     --verifier $VERIFIER_TYPE \
     --verifier-url $VERIFIER_URL \
     --etherscan-api-key $ETHERSCAN_API_KEY \
-    --chain-id $CHAIN_ID \
     --force \
     -vvvv

@@ -256,7 +256,7 @@ abstract contract BaseCrosschainDepositAdapter is
         else IERC20(token).safeTransfer(to, amount);
     }
 
-    function _authorizeUpgrade(address) internal override onlyOwner {}
+    function _authorizeUpgrade(address) internal virtual override onlyOwner {}
 
     // ================== VIEW ==================
     
