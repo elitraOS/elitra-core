@@ -6,7 +6,7 @@ import { AccessControlUpgradeable } from "@openzeppelin/contracts-upgradeable/ac
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import { ICrosschainDepositQueue } from "../../interfaces/ICrosschainDepositQueue.sol";
+import { ICrosschainDepositQueue } from "../interfaces/ICrosschainDepositQueue.sol";
 
 /**
  * @title CrosschainDepositQueue
@@ -26,11 +26,11 @@ contract CrosschainDepositQueue is
 
     // ========================================= STATE VARIABLES =========================================
 
-    address public adapter;
     uint256 public totalFailedDeposits;
     
     mapping(uint256 => FailedDeposit) public failedDeposits;
     mapping(address => uint256[]) public userFailedDepositIds;
+    mapping(address => bool) public registeredAdapters;
 
     // ========================================= INITIALIZER =========================================
 
@@ -52,7 +52,7 @@ contract CrosschainDepositQueue is
     // ========================================= MODIFIERS =========================================
 
     modifier onlyAdapter() {
-        require(msg.sender == adapter, "Only adapter");
+        require(registeredAdapters[msg.sender], "Only registered adapter");
         _;
     }
 
@@ -90,6 +90,7 @@ contract CrosschainDepositQueue is
             token: token,
             amount: amount,
             vault: vault,
+            adapter: msg.sender,
             guid: guid,
             failureReason: reason,
             timestamp: block.timestamp,
@@ -99,7 +100,7 @@ contract CrosschainDepositQueue is
 
         userFailedDepositIds[user].push(depositId);
 
-        emit FailedDepositRecorded(depositId, user, token, amount, sharePrice, reason);
+        emit FailedDepositRecorded(depositId, user, token, msg.sender, amount, sharePrice, reason);
     }
 
     /**
@@ -122,9 +123,10 @@ contract CrosschainDepositQueue is
     /**
      * @inheritdoc ICrosschainDepositQueue
      */
-    function setAdapter(address _adapter) external override onlyOwnerOrOperator {
+    function setAdapterRegistration(address _adapter, bool _registered) external override onlyOwnerOrOperator {
         require(_adapter != address(0), "Invalid adapter");
-        adapter = _adapter;
+        registeredAdapters[_adapter] = _registered;
+        emit AdapterRegistered(_adapter, _registered);
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
@@ -143,5 +145,12 @@ contract CrosschainDepositQueue is
      */
     function getUserFailedDeposits(address user) external view override returns (uint256[] memory) {
         return userFailedDepositIds[user];
+    }
+
+    /**
+     * @inheritdoc ICrosschainDepositQueue
+     */
+    function isAdapterRegistered(address _adapter) external view override returns (bool) {
+        return registeredAdapters[_adapter];
     }
 }

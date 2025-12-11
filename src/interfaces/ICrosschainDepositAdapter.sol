@@ -82,31 +82,6 @@ interface ICrosschainDepositAdapter {
         uint256 amountOut
     );
 
-    // ========================================= CORE FUNCTIONS =========================================
-    /**
-     * @notice Execute batch operations (zapping)
-     * @param calls Array of Call structs containing target, data, and value
-     * @dev Only callable by this contract during deposit processing
-     * @dev Similar to ElitraVault.manageBatch but without auth restrictions
-     */
-    function manageBatch(
-        Call[] calldata calls
-    ) external;
-
-    /**
-     * @notice Deposit tokens into vault for receiver
-     * @param vault Vault address
-     * @param receiver Address to receive vault shares
-     * @param amount Amount to deposit
-     * @return shares Vault shares received
-     * @dev Only callable by this contract during deposit processing
-     */
-    function depositToVault(
-        address vault,
-        address receiver,
-        uint256 amount
-    ) external returns (uint256 shares);
-
     // ========================================= ADMIN FUNCTIONS =========================================
 
     /**
@@ -133,13 +108,7 @@ interface ICrosschainDepositAdapter {
      */
     function emergencyRecover(address token, address to, uint256 amount) external;
 
-    /**
-     * @notice Set supported OFT token mapping
-     * @param token Token address
-     * @param oft OFT contract address
-     * @param isActive Whether to activate or deactivate
-     */
-    function setSupportedOFT(address token, address oft, bool isActive) external;
+   
 
     /**
      * @notice Set supported vault
