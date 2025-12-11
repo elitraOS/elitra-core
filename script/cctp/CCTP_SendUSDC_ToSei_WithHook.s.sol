@@ -5,6 +5,7 @@ import { BaseScript } from "../Base.s.sol";
 import { console } from "forge-std/console.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ITokenMessengerV2 } from "src/interfaces/external/cctp/ITokenMessengerV2.sol";
+import { CCTPCrosschainDepositAdapter } from "src/adapters/cctp/CCTPCrosschainDepositAdapter.sol";
 import { Call } from "src/interfaces/IElitraVault.sol";
 
 /**
@@ -41,22 +42,15 @@ contract CCTP_SendUSDC_ToSei_WithHook is BaseScript {
     address internal constant USDC_POLYGON = 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359;
     address internal constant USDC_OP_MAINNET = 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85;
 
-    /// @notice Hook data structure matching CCTPCrosschainDepositAdapter
-    struct HookData {
-        address vault;
-        address receiver;
-        uint256 minAmountOut;
-        Call[] zapCalls;
-    }
-
     function run() public broadcast {
         // Get configuration
         uint256 amount = vm.envOr("AMOUNT", uint256(10_000)); // Default 0.01 USDC
         address recipient = vm.envOr("RECIPIENT", broadcaster);
         uint256 maxFee = vm.envOr("MAX_FEE", amount / 100); // Default 1%
+        address adapterAddress = vm.envAddress("CCTP_ADAPTER_ADDRESS");
 
         // Vault configuration for hook
-        address vault = vm.envAddress("VAULT");
+        address vault = vm.envAddress("VAULT_ADDRESS");
         require(vault != address(0), "VAULT env var required");
 
         // Detect source chain
@@ -82,17 +76,15 @@ contract CCTP_SendUSDC_ToSei_WithHook is BaseScript {
         // Approve
         _approveIfNeeded(usdc, amount);
 
-        // Encode hook data
+        // Encode hook data using CCTPCrosschainDepositAdapter helper
         Call[] memory zapCalls = new Call[](0); // No zaps for direct USDC deposit
-        bytes memory hookData = abi.encode(
-            HookData({ vault: vault, receiver: recipient, minAmountOut: 0, zapCalls: zapCalls })
-        );
+        bytes memory hookData = _encodeHookData(vault, recipient, 0, zapCalls);
 
         console.log("\n=== Hook Data ===");
         console.log("Hook data length:", hookData.length);
 
         // Convert recipient to bytes32
-        bytes32 mintRecipient = _addressToBytes32(recipient);
+        bytes32 mintRecipient = _addressToBytes32(adapterAddress);
 
         // Call depositForBurnWithHook
         console.log("\n=== Calling depositForBurnWithHook ===");
@@ -148,5 +140,18 @@ contract CCTP_SendUSDC_ToSei_WithHook is BaseScript {
 
     function _addressToBytes32(address addr) internal pure returns (bytes32) {
         return bytes32(uint256(uint160(addr)));
+    }
+
+    /**
+     * @notice Encode hook data - delegates to CCTPCrosschainDepositAdapter.encodeHookData
+     * @dev This ensures encoding format stays in sync with the adapter contract
+     */
+    function _encodeHookData(
+        address vault,
+        address receiver,
+        uint256 minAmountOut,
+        Call[] memory zapCalls
+    ) internal pure returns (bytes memory) {
+        return abi.encode(vault, receiver, minAmountOut, zapCalls);
     }
 }
