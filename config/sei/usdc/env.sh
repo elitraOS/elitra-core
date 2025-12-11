@@ -1,51 +1,17 @@
-## Load hub config
-source config/sei/usdc/hub/main.sh
+source config/sei/usdc/env-config.sh
 
 
-export CURRENT_REMOTE=eth
-export CURRENT_BRIDGE=lz
-export INTERACT_FROM_HUB=true
+## Token name and symbol, addresses 
+export NAME="Elitra USDC Vault"
+export SYMBOL="eUSDC"
+
+export ASSET_ADDRESS=0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392
+
+## Deplyoyment info
+export VAULT_ADDRESS=0x82eB7d078de7E6bF160de007c39542c482e438F4
+export ROLES_AUTHORITY_ADDRESS=0x74bbD2ba52c19C454C2Eaa15b438Fdff60824391
 
 
+## Currently setting for usdc vault 
+export CCTP_DEPOSIT_ADAPTER_ADDRESS=0x0d9f44585641f91972Ae35a634F7016377b22925 
 
-REMOTE_UPPER=$(echo "$CURRENT_REMOTE" | tr '[:lower:]' '[:upper:]')
-
-
-# source config/sei/usdc/remotes/hub/main.sh
-# source config/sei/usdc/hub/$CURRENT_BRIDGE.sh
-
-# source config/sei/usdc/remotes/hub/$CURRENT_BRIDGE.sh
-
-# source config/sei/usdc/remotes/$CURRENT_REMOTE/main.sh
-# source config/sei/usdc/remotes/$CURRENT_REMOTE/$CURRENT_BRIDGE.sh
-
-
-eval "export REMOTE_SUB_VAULT_ADDRESS=\$${REMOTE_UPPER}_SUB_VAULT_ADDRESS"
-eval "export REMOTE_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS=\$${REMOTE_UPPER}_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS"
-eval "export REMOTE_OFT_ADDRESS=\$${REMOTE_UPPER}_OFT_ADDRESS"
-eval "export REMOTE_ASSET_ADDRESS=\$${REMOTE_UPPER}_ASSET_ADDRESS"
-eval "export REMOTE_AUTHORITY_ADDRESS=\$${REMOTE_UPPER}_AUTHORITY_ADDRESS"
-eval "export REMOTE_EID=\$${REMOTE_UPPER}_EID"
-
-
-## Current setting 
-if [ "$INTERACT_FROM_HUB" = true ]; then
-    export CURRENT_VAULT_ADDRESS=$VAULT_ADDRESS
-    export CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS=$CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS
-    export CURRENT_OFT_ADDRESS=$OFT_ADDRESS
-    export CURRENT_ASSET_ADDRESS=$ASSET_ADDRESS
-    
-
-    export DEST_EID=$REMOTE_EID
-    export DEST_VAULT_ADDRESS=$REMOTE_SUB_VAULT_ADDRESS
-else
-    export CURRENT_VAULT_ADDRESS=$REMOTE_SUB_VAULT_ADDRESS
-    export CURRENT_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS=$REMOTE_CROSSCHAIN_STRATEGY_ADAPTER_ADDRESS
-    export CURRENT_OFT_ADDRESS=$REMOTE_OFT_ADDRESS
-    export CURRENT_ASSET_ADDRESS=$REMOTE_ASSET_ADDRESS
-    export CURRENT_DST_EID=$REMOTE_DST_EID
-
-
-    export DEST_EID=$EID
-    export DEST_VAULT_ADDRESS=$VAULT_ADDRESS
-fi
