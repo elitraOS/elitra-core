@@ -102,8 +102,7 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
             _processReceivedFunds(mintRecipient, sourceDomain, usdc, amountReceived, messageHash, hookData);
             hookSuccess = true;
         } else {
-            // No hook - just leave USDC in contract
-            hookSuccess = true;
+            revert("No hook data");
         }
     }
 
@@ -145,15 +144,6 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
     }
 
     // ================== ADMIN FUNCTIONS ==================
-
-    /**
-     * @notice Not applicable for CCTP (CCTP only supports native USDC)
-     * @dev Required by ICrosschainDepositAdapter interface but not used
-     */
-    function setSupportedOFT(address, address, bool) external pure {
-        revert("CCTP does not use OFTs");
-    }
-
     /**
      * @notice Allow contract to receive ETH (should not happen for pure USDC ops but good for safety)
      */

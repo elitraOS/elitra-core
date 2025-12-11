@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
-import { CrosschainDepositAdapter } from "../../../src/adapters/layerzero/CrosschainDepositAdapter.sol";
+import { LayerZeroCrosschainDepositAdapter } from "../../../src/adapters/layerzero/LzCrosschainDepositAdapter.sol";
 import { CrosschainDepositQueue } from "../../../src/adapters/CrosschainDepositQueue.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
@@ -37,16 +37,20 @@ contract Deploy_CrosschainDepositAdapter is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
+        // Get ZapExecutor address
+        address zapExecutor = vm.envAddress("ZAP_EXECUTOR_ADDRESS");
+
         // Deploy implementation
-        console2.log("\nDeploying CrosschainDepositAdapter implementation...");
-        CrosschainDepositAdapter adapterImpl = new CrosschainDepositAdapter(lzEndpoint);
-        console2.log("CrosschainDepositAdapter implementation:", address(adapterImpl));
+        console2.log("\nDeploying LayerZeroCrosschainDepositAdapter implementation...");
+        LayerZeroCrosschainDepositAdapter adapterImpl = new LayerZeroCrosschainDepositAdapter(lzEndpoint);
+        console2.log("LayerZeroCrosschainDepositAdapter implementation:", address(adapterImpl));
 
         // Prepare initialization data
         bytes memory initData = abi.encodeWithSelector(
-            CrosschainDepositAdapter.initialize.selector,
+            LayerZeroCrosschainDepositAdapter.initialize.selector,
             owner,
-            queueAddress
+            queueAddress,
+            zapExecutor
         );
 
         // Deploy proxy
@@ -59,7 +63,7 @@ contract Deploy_CrosschainDepositAdapter is Script {
 
         // Set adapter on the queue
         console2.log("\nSetting adapter on queue...");
-        CrosschainDepositQueue(queueAddress).setAdapter(address(adapterProxy));
+        CrosschainDepositQueue(queueAddress).setAdapterRegistration(address(adapterProxy), true);
         console2.log("Adapter set on queue successfully");
 
         vm.stopBroadcast();

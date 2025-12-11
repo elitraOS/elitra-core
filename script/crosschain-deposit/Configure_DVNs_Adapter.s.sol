@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/console.sol";
-import { CrosschainDepositAdapter } from "../../src/adapters/layerzero/CrosschainDepositAdapter.sol";
+import { LayerZeroCrosschainDepositAdapter } from "../../src/adapters/layerzero/LzCrosschainDepositAdapter.sol";
 
 /**
  * @title Configure_DVNs_Adapter
@@ -72,7 +72,7 @@ contract Configure_DVNs_Adapter is Script {
         console.log("  Source EID:", sourceEid);
         console.log("");
 
-        CrosschainDepositAdapter adapter = CrosschainDepositAdapter(payable(adapterAddress));
+        LayerZeroCrosschainDepositAdapter adapter = LayerZeroCrosschainDepositAdapter(payable(adapterAddress));
 
         // Verify we're the owner
         address owner = adapter.owner();

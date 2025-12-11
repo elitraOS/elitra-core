@@ -8,10 +8,10 @@ import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces
 import { OFTComposeMsgCodec } from "@layerzerolabs/oapp-evm/contracts/oft/libs/OFTComposeMsgCodec.sol";
 
 /**
- * @title CrosschainDepositAdapter
+ * @title LayerZeroCrosschainDepositAdapter
  * @notice Upgradeable adapter for cross-chain vault deposits via LayerZero OFT compose
  */
-contract CrosschainDepositAdapter is 
+contract LayerZeroCrosschainDepositAdapter is 
     BaseCrosschainDepositAdapter, 
     OAppUpgradeable, 
     OAppOptionsType3Upgradeable, 
