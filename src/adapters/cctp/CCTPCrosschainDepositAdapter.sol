@@ -144,9 +144,11 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
         }
     }
 
+    // ================== ADMIN FUNCTIONS ==================
+
     /**
-     * @notice CCTP doesn't use OFTs - this function is not applicable
-     * @dev Required by ICrosschainDepositAdapter interface but not used in CCTP
+     * @notice Not applicable for CCTP (CCTP only supports native USDC)
+     * @dev Required by ICrosschainDepositAdapter interface but not used
      */
     function setSupportedOFT(address, address, bool) external pure {
         revert("CCTP does not use OFTs");

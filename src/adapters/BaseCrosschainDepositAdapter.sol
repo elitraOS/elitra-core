@@ -183,7 +183,7 @@ abstract contract BaseCrosschainDepositAdapter is
 
     function _handleDepositFailure(uint256 depositId, address token, uint256 amount, bytes memory reason) internal {
         address user = depositRecords[depositId].user;
-
+        
         if (depositQueue == address(0)) {
             // No queue - return to user
             IERC20(token).safeTransfer(user, amount);
@@ -282,15 +282,6 @@ abstract contract BaseCrosschainDepositAdapter is
     modifier onlyOwnerOrOperator() {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(OPERATOR_ROLE, msg.sender), "Not authorized");
         _;
-    }
-
-    // Abstract methods required by ICrosschainDepositAdapter
-    function manageBatch(Call[] calldata) external override {
-        revert("Use ZapExecutor");
-    }
-
-    function depositToVault(address, address, uint256) external override returns (uint256) {
-        revert("Use ZapExecutor");
     }
 }
 

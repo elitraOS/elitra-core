@@ -15,6 +15,7 @@ interface ICrosschainDepositQueue {
         address token;
         uint256 amount;
         address vault;
+        address adapter; // The bridge adapter that recorded this failure
         bytes32 guid;
         bytes failureReason;
         uint256 timestamp;
@@ -28,10 +29,13 @@ interface ICrosschainDepositQueue {
         uint256 indexed depositId,
         address indexed user,
         address indexed token,
+        address adapter,
         uint256 amount,
         uint256 sharePrice,
         bytes reason
     );
+
+    event AdapterRegistered(address indexed adapter, bool registered);
 
     event DepositResolved(
         uint256 indexed depositId,
@@ -73,10 +77,16 @@ interface ICrosschainDepositQueue {
 
     // ========================================= ADMIN FUNCTIONS =========================================
 
-    function setAdapter(address _adapter) external;
+    /**
+     * @notice Register or unregister a bridge adapter
+     * @param _adapter Address of the adapter
+     * @param _registered True to register, false to unregister
+     */
+    function setAdapterRegistration(address _adapter, bool _registered) external;
 
     // ========================================= VIEW FUNCTIONS =========================================
 
     function getFailedDeposit(uint256 depositId) external view returns (FailedDeposit memory);
     function getUserFailedDeposits(address user) external view returns (uint256[] memory);
+    function isAdapterRegistered(address _adapter) external view returns (bool);
 }
