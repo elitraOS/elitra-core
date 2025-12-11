@@ -6,7 +6,7 @@ import { OAppUpgradeable, Origin } from "@layerzerolabs/oapp-evm-upgradeable/con
 import { OAppOptionsType3Upgradeable } from "@layerzerolabs/oapp-evm-upgradeable/contracts/oapp/libs/OAppOptionsType3Upgradeable.sol";
 import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppComposer.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oapp-evm/contracts/oft/libs/OFTComposeMsgCodec.sol";
-
+import { IWETH9 } from "../../interfaces/IWETH9.sol";
 /**
  * @title LayerZeroCrosschainDepositAdapter
  * @notice Upgradeable adapter for cross-chain vault deposits via LayerZero OFT compose
@@ -22,7 +22,7 @@ contract LayerZeroCrosschainDepositAdapter is
     mapping(address => address) public tokenToOFT; // token => OFT contract
     mapping(address => address) public oftToToken; // OFT => token contract
     mapping(address => bool) public supportedOFTs;
-
+    address public weth;
     // ================== INITIALIZER ==================
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -30,9 +30,14 @@ contract LayerZeroCrosschainDepositAdapter is
         _disableInitializers();
     }
 
-    function initialize(address _owner, address _queue, address _zapExecutor) public initializer {
+    function initialize(address _owner, address _queue, address _zapExecutor, address _weth) public initializer {
         __BaseAdapter_init(_owner, _queue, _zapExecutor);
         __OApp_init(_owner);
+        weth = _weth;
+    }
+
+    function setWeth(address _weth) external onlyOwner {
+        weth = _weth;
     }
 
     // ================== LAYERZERO COMPOSE ==================
@@ -66,6 +71,9 @@ contract LayerZeroCrosschainDepositAdapter is
 
         // Get the token that was received (from the OFT mapping)
         address token = _getTokenFromOFT(_from);
+
+        // Deposit go to weth in case of oft is native
+        if (token == weth) IWETH9(weth).deposit{value: amountLD}();
 
         // Call Base Logic
         // Note: passing srcEid as the sourceId

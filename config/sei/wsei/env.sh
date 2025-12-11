@@ -1,3 +1,5 @@
+source config/sei/wsei/env-config.sh
+
 export NAME="Elitra WSEI Vault"
 export SYMBOL="eWSEI"
 export ASSET_ADDRESS=0xE30feDd158A2e3b13e9badaeABaFc5516e95e8C7 # Wsei

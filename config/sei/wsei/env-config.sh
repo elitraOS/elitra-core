@@ -12,10 +12,8 @@ export INTERACT_FROM_HUB=true
 REMOTE_UPPER=$(echo "$CURRENT_REMOTE" | tr '[:lower:]' '[:upper:]')
 
 
-source config/sei/wsei/remotes/hub/main.sh
 source config/sei/wsei/hub/$CURRENT_BRIDGE.sh
 
-source config/sei/wsei/remotes/hub/$CURRENT_BRIDGE.sh
 
 source config/sei/wsei/remotes/$CURRENT_REMOTE/main.sh
 source config/sei/wsei/remotes/$CURRENT_REMOTE/$CURRENT_BRIDGE.sh

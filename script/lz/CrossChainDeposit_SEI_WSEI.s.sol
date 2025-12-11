@@ -65,7 +65,7 @@ contract CrossChainDeposit_SEI_WSEI is Script {
 
         // Get environment variables
         address ethSeiOft = vm.envAddress("ETH_OFT_ADDRESS");
-        address adapterAddress = vm.envAddress("LZ_CROSSCHAIN_ADAPTER_ADDRESS");
+        address adapterAddress = vm.envAddress("LZ_CROSSCHAIN_DEPOSIT_ADAPTER_ADDRESS");
         address wseiAddress = vm.envAddress("ASSET_ADDRESS");
         address wseiVault = vm.envAddress("VAULT_ADDRESS");
         uint256 amount = vm.envOr("AMOUNT", uint256(0.001 ether));
@@ -83,14 +83,7 @@ contract CrossChainDeposit_SEI_WSEI is Script {
         console.log("Destination EID:", dstEid);
 
         // Build zap calls for wrapping SEI to WSEI on destination chain
-        Call[] memory zapCalls = new Call[](1);
-
-        // Wrap SEI to WSEI by calling WSEI.deposit() with value
-        zapCalls[0] = Call({
-            target: wseiAddress,
-            value: amount, // Send SEI value to wrap
-            data: abi.encodeWithSignature("deposit()") // WSEI.deposit()
-        });
+        Call[] memory zapCalls = new Call[](0);
 
         // minAmountOut: expect at least 99% of amount after wrapping (should be 1:1)
         uint256 minAmountOut = (amount * 9900) / 10000;
