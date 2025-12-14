@@ -36,6 +36,7 @@ withdraw(uint256 assets, address receiver, address owner)
 ### Target Contract
 - **Address**: `0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae`
 - **Supported Assets**: SEI, USDC
+ - **Implementation**: `src/guards/sei/MerklDistributorGuard.sol`
 
 ### Allowed Functions
 
@@ -47,10 +48,10 @@ claim(address[] users,address[] tokens,uint256[] amounts,bytes32[][] proofs)
 
 | Parameter | Validation |
 |-----------|------------|
-| `address` | User addresses |
-| `tokens` | Assets to claim |
-| `amounts` | Amounts to claim |
-| `proofs` | Merkl Proof |
+| `users` | All users must be the vault address |
+| `tokens` | Not validated |
+| `amounts` | Not validated |
+| `proofs` | Not validated |
 
 ---
 
