@@ -2,24 +2,31 @@
 pragma solidity 0.8.28;
 
 import { Errors } from "../libraries/Errors.sol";
-import { Call } from "../interfaces/IElitraVault.sol";
-import { IVaultBase } from "../interfaces/IVaultBase.sol";
+import { IVaultBase, Call } from "../interfaces/IVaultBase.sol";
 import { ITransactionGuard } from "../interfaces/ITransactionGuard.sol";
 import { Compatible } from "./Compatible.sol";
 import { AuthUpgradeable, Authority } from "./AuthUpgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+// solhint-disable-next-line max-line-length
+import { EnumerableSetUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/structs/EnumerableSetUpgradeable.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title VaultBase
 /// @author Elitra
 /// @notice Base contract for Vaults and SubVaults providing auth, pause, and management features
-abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible, IVaultBase {
+abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, UUPSUpgradeable, Compatible, IVaultBase {
     using Address for address;
+    using SafeERC20 for IERC20;
+    using EnumerableSetUpgradeable for EnumerableSetUpgradeable.AddressSet;
 
     /// @custom:storage-location erc7201:elitra.storage.vaultbase
     struct VaultBaseStorage {
         mapping(address target => ITransactionGuard guard) guards;
-        mapping(address target => bool trusted) trustedTargets;
+        EnumerableSetUpgradeable.AddressSet trustedTargets;
+        EnumerableSetUpgradeable.AddressSet guardedTargets;
     }
 
     // keccak256(abi.encode(uint256(keccak256("elitra.storage.vaultbase")) - 1)) & ~bytes32(uint256(0xff))
@@ -35,6 +42,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
         }
     }
 
+    /// @notice Disable initializers (for proxy pattern safety)
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -45,6 +53,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     function __VaultBase_init(address _owner) internal onlyInitializing {
         __Auth_init(_owner, Authority(address(0)));
         __Pausable_init();
+        __UUPSUpgradeable_init();
     }
 
     /// @notice Pause the vault
@@ -63,6 +72,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     function setGuard(address target, address guard) external virtual requiresAuth {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
         vaultBaseStorage.guards[target] = ITransactionGuard(guard);
+        vaultBaseStorage.guardedTargets.add(target);
         emit GuardUpdated(target, guard);
     }
 
@@ -71,6 +81,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     function removeGuard(address target) external virtual requiresAuth {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
         delete vaultBaseStorage.guards[target];
+        vaultBaseStorage.guardedTargets.remove(target);
         emit GuardRemoved(target);
     }
 
@@ -87,7 +98,11 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     /// @param isTrusted Whether the target is trusted
     function setTrustedTarget(address target, bool isTrusted) external virtual requiresAuth {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
-        vaultBaseStorage.trustedTargets[target] = isTrusted;
+        if (isTrusted) {
+            vaultBaseStorage.trustedTargets.add(target);
+        } else {
+            vaultBaseStorage.trustedTargets.remove(target);
+        }
         emit TrustedTargetUpdated(target, isTrusted);
     }
 
@@ -96,7 +111,21 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     /// @return Whether the target is trusted
     function isTrustedTarget(address target) external view override returns (bool) {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
-        return vaultBaseStorage.trustedTargets[target];
+        return vaultBaseStorage.trustedTargets.contains(target);
+    }
+
+    /// @notice Returns the list of trusted targets
+    /// @return The list of trusted targets
+    function getTrustedTargets() external view returns (address[] memory) {
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        return vaultBaseStorage.trustedTargets.values();
+    }
+
+    /// @notice Returns the list of guarded targets
+    /// @return The list of guarded targets
+    function getGuardedTargets() external view returns (address[] memory) {
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        return vaultBaseStorage.guardedTargets.values();
     }
 
     /// @notice Execute a call to a target contract
@@ -115,16 +144,14 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
     {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
 
-        if (!vaultBaseStorage.trustedTargets[target]) {
-            ITransactionGuard guard = vaultBaseStorage.guards[target];
+        ITransactionGuard guard = vaultBaseStorage.guards[target];
 
-            if (address(guard) == address(0)) {
-                revert Errors.TransactionValidationFailed(target);
-            }
-
+        if (address(guard) != address(0)) {
             if (!guard.validate(msg.sender, data, value)) {
                 revert Errors.TransactionValidationFailed(target);
             }
+        } else if (!vaultBaseStorage.trustedTargets.contains(target)) {
+            revert Errors.TransactionValidationFailed(target);
         }
 
         result = target.functionCallWithValue(data, value);
@@ -139,5 +166,23 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, Compatible,
             bytes memory result = _manage(calls[i].target, calls[i].data, calls[i].value);
             emit ManageBatchOperation(i, calls[i].target, bytes4(calls[i].data), calls[i].value, result);
         }
+    }
+
+    /// @notice Sweep ERC20 token from the vault
+    /// @param token The token to sweep
+    function sweepToken(address token) public virtual requiresAuth {
+        require(token != address(0), "Invalid token");
+        IERC20(token).safeTransfer(owner(), IERC20(token).balanceOf(address(this)));
+    }
+
+    /// @notice Sweep ETH from the vault
+    function sweepETH() public virtual requiresAuth {
+        payable(owner()).transfer(address(this).balance);
+    }
+
+    /// @notice Authorizes an upgrade to a new implementation
+    /// @param newImplementation The address of the new implementation
+    function _authorizeUpgrade(address newImplementation) internal virtual override requiresAuth {
+        newImplementation;
     }
 }
