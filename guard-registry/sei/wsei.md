@@ -16,6 +16,26 @@ approve(address spender, uint256 amount)
 | `spender` | Must be whitelisted |
 | `amount` | - |
 
+### deposit (wrap native → WSEI)
+```solidity
+deposit()
+```
+**Selector**: `0xd0e30db0`
+
+| Parameter | Validation |
+|-----------|------------|
+| - | No parameters |
+
+### withdraw (unwrap WSEI → native)
+```solidity
+withdraw(uint256 amount)
+```
+**Selector**: `0x2e1a7d4d`
+
+| Parameter | Validation |
+|-----------|------------|
+| `amount` | - |
+
 ### Whitelisted Spenders
 - Yei Pool: `0x4a4d9abD36F923cBA0Af62A39C01dEC2944fb638`
 - Takara SEI Pool: `0xA26b9BFe606d29F16B5Aecf30F9233934452c4E2`

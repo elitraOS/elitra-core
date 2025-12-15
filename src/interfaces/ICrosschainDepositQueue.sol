@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import { Call } from "./IVaultBase.sol";
+
 interface ICrosschainDepositQueue {
     // ========================================= STRUCTS =========================================
 
@@ -74,6 +76,27 @@ interface ICrosschainDepositQueue {
      * @dev Only callable by operator/admin
      */
     function resolveFailedDeposit(uint256 depositId, address recipient) external;
+
+    /**
+     * @notice Fulfill a failed deposit in one step. If the failed token matches the vault asset, deposit directly.
+     *         Otherwise, use ZapExecutor to swap then deposit.
+     * @param depositId The failed deposit id
+     * @param minAssetOut Minimum vault-asset amount expected from zap (ignored when token==asset)
+     * @param minSharesOut Minimum shares the user must receive
+     * @param zapCalls Route for ZapExecutor (ignored when token==asset)
+     * @return sharesOut Shares minted to the user
+     */
+    function fulfillFailedDeposit(
+        uint256 depositId,
+        uint256 minAssetOut,
+        uint256 minSharesOut,
+        Call[] calldata zapCalls
+    ) external returns (uint256 sharesOut);
+
+    /**
+     * @notice Set the zap executor used for fulfillment
+     */
+    function setZapExecutor(address exec) external;
 
     // ========================================= ADMIN FUNCTIONS =========================================
 
