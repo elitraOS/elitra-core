@@ -7,6 +7,9 @@ import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ICrosschainDepositQueue } from "../interfaces/ICrosschainDepositQueue.sol";
+import { Call } from "../interfaces/IVaultBase.sol";
+import { IElitraVault } from "../interfaces/IElitraVault.sol";
+import { ZapExecutor } from "./ZapExecutor.sol";
 
 /**
  * @title CrosschainDepositQueue
@@ -31,6 +34,8 @@ contract CrosschainDepositQueue is
     mapping(uint256 => FailedDeposit) public failedDeposits;
     mapping(address => uint256[]) public userFailedDepositIds;
     mapping(address => bool) public registeredAdapters;
+
+    address public zapExecutor;
 
     // ========================================= INITIALIZER =========================================
 
@@ -118,6 +123,54 @@ contract CrosschainDepositQueue is
         emit DepositResolved(depositId, deposit.user, deposit.token, deposit.amount, false);
     }
 
+    /**
+     * @inheritdoc ICrosschainDepositQueue
+     */
+    function fulfillFailedDeposit(
+        uint256 depositId,
+        uint256 minAssetOut,
+        uint256 minSharesOut,
+        Call[] calldata zapCalls
+    ) external override onlyOwnerOrOperator returns (uint256 sharesOut) {
+        FailedDeposit storage deposit = failedDeposits[depositId];
+        require(deposit.status == DepositStatus.Failed, "Not failed status");
+        require(minSharesOut > 0, "minSharesOut=0");
+        require(deposit.vault != address(0), "Invalid vault");
+
+        IElitraVault vault = IElitraVault(deposit.vault);
+        address vaultAsset = vault.asset();
+
+        if (deposit.token == vaultAsset) {
+            // Direct deposit path
+            IERC20(vaultAsset).safeApprove(address(vault), 0);
+            IERC20(vaultAsset).safeApprove(address(vault), deposit.amount);
+
+            sharesOut = vault.deposit(deposit.amount, deposit.user);
+            require(sharesOut >= minSharesOut, "Shares below minimum");
+        } else {
+            // Zap path
+            require(zapExecutor != address(0), "Zap executor not set");
+            require(minAssetOut > 0, "minAssetOut=0");
+
+            IERC20(deposit.token).safeApprove(zapExecutor, 0);
+            IERC20(deposit.token).safeApprove(zapExecutor, deposit.amount);
+
+            sharesOut = ZapExecutor(zapExecutor).executeZapAndDeposit(
+                deposit.token,
+                deposit.amount,
+                deposit.vault,
+                deposit.user,
+                minAssetOut,
+                zapCalls
+            );
+            require(sharesOut >= minSharesOut, "Shares below minimum");
+        }
+
+        deposit.status = DepositStatus.Resolved;
+
+        emit DepositResolved(depositId, deposit.user, deposit.token, deposit.amount, true);
+    }
+
     // ========================================= ADMIN FUNCTIONS =========================================
 
     /**
@@ -127,6 +180,14 @@ contract CrosschainDepositQueue is
         require(_adapter != address(0), "Invalid adapter");
         registeredAdapters[_adapter] = _registered;
         emit AdapterRegistered(_adapter, _registered);
+    }
+
+    /**
+     * @inheritdoc ICrosschainDepositQueue
+     */
+    function setZapExecutor(address exec) external override onlyOwnerOrOperator {
+        require(exec != address(0), "Invalid zap executor");
+        zapExecutor = exec;
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
