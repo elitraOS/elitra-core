@@ -5,9 +5,9 @@ import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-import { ElitraVault } from "../ElitraVault.sol";
-import { IBalanceUpdateHook } from "../interfaces/IBalanceUpdateHook.sol";
-import { IRedemptionHook } from "../interfaces/IRedemptionHook.sol";
+import { ElitraVault } from "./ElitraVault.sol";
+import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
+import { IRedemptionHook } from "./interfaces/IRedemptionHook.sol";
 
 /// @title ElitraVaultFactory
 /// @notice Deploys ElitraVault proxies deterministically (CREATE2) and seeds them in a single tx.
@@ -60,7 +60,7 @@ contract ElitraVaultFactory {
         bytes32 salt,
         uint256 initialSeed,
         address seedReceiver
-    ) external returns (address vault, uint256 shares) {
+    ) external returns (address payable vault, uint256 shares) {
         require(initialSeed > 0, "seed zero");
         require(address(asset) != address(0), "asset zero");
         require(owner != address(0), "owner zero");
@@ -79,7 +79,7 @@ contract ElitraVaultFactory {
             symbol
         );
 
-        vault = address(new ERC1967Proxy{salt: salt}(implementation, initData));
+        vault = payable(address(new ERC1967Proxy{salt: salt}(implementation, initData)));
 
         // Pull seed assets and deposit to set an initial PPS
         asset.safeTransferFrom(msg.sender, address(this), initialSeed);
