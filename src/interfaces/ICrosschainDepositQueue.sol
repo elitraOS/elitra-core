@@ -72,10 +72,10 @@ interface ICrosschainDepositQueue {
     ) external;
 
     /**
-     * @notice Resolve a failed deposit (withdraw to user or retry)
+     * @notice Refund a failed deposit to the original user
      * @dev Only callable by operator/admin
      */
-    function resolveFailedDeposit(uint256 depositId, address recipient) external;
+    function refundFailedDeposit(uint256 depositId) external;
 
     /**
      * @notice Fulfill a failed deposit in one step. If the failed token matches the vault asset, deposit directly.

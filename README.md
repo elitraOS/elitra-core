@@ -464,7 +464,7 @@ graph TB
 
     subgraph "Resolution"
         Operator[Operator]
-        Resolve[resolveFailedDeposit<br/>or fulfillFailedDeposit]
+        Resolve[refundFailedDeposit<br/>or fulfillFailedDeposit]
         Refund[Refund tokens to user]
         Fulfill[Direct deposit if token==asset<br/>Zap + deposit otherwise]
     end
@@ -503,7 +503,7 @@ struct FailedDeposit {
 }
 
 // Resolution paths:
-// - resolveFailedDeposit: refund the failed token to a recipient
+// - refundFailedDeposit: refund the failed token to the original user
 // - fulfillFailedDeposit: if failed token == vault asset, deposit directly;
 //   otherwise call ZapExecutor.executeZapAndDeposit to swap then deposit.
 //   Operator controls minAssetOut (vault asset) and minSharesOut (mint guard).

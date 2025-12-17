@@ -2,11 +2,6 @@
 pragma solidity 0.8.28;
 
 library Errors {
-    //============================== GENERICS ===============================
-    /// @notice Thrown when an unauthorized method to a target is called.
-    /// @dev The method must be authorized by setUserRole and setRoleCapability from RolesAuthority
-    error TargetMethodNotAuthorized(address target, bytes4 functionSig);
-
     /// @notice Thrown when insufficient shares balance is available to complete the operation.
     error InsufficientShares();
 
@@ -30,9 +25,6 @@ library Errors {
 
     /// @notice Thrown when redeem() or withdraw() is called
     error UseRequestRedeem();
-
-    /// @notice Thrown when caller is not the oracle adapter
-    error OnlyOracleAdapter();
 
     /// @notice Thrown when attempting to set zero address for adapter
     error ZeroAddress();

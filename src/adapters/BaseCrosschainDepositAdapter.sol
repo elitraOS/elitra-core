@@ -192,25 +192,7 @@ abstract contract BaseCrosschainDepositAdapter is
             return;
         }
 
-        // Send to Queue
-        IERC20(token).forceApprove(depositQueue, amount);
-        
-        // Attempt to get price
-        uint256 sharePrice = 0;
-        try IElitraVault(depositRecords[depositId].vault).lastPricePerShare() returns (uint256 pps) {
-            sharePrice = pps;
-        } catch {}
-
-        try ICrosschainDepositQueue(depositQueue).recordFailedDeposit(
-            user,
-            depositRecords[depositId].srcEid,
-            token,
-            amount,
-            depositRecords[depositId].vault,
-            depositRecords[depositId].guid,
-            reason,
-            sharePrice
-        ) {
+        try this._enqueueFailedDeposit(depositId, token, amount, reason) {
             _updateDepositStatus(depositId, DepositStatus.Queued);
             emit DepositQueued(depositId, user, reason);
         } catch {
@@ -219,6 +201,24 @@ abstract contract BaseCrosschainDepositAdapter is
             _updateDepositStatus(depositId, DepositStatus.DepositFailed);
             emit DepositFailed(depositId, user, reason);
         }
+    }
+
+    function _enqueueFailedDeposit(uint256 depositId, address token, uint256 amount, bytes memory reason) external onlySelf {
+        IERC20(token).forceApprove(depositQueue, amount);
+
+        // get share price
+        uint256 sharePrice = IElitraVault(depositRecords[depositId].vault).lastPricePerShare();
+
+        ICrosschainDepositQueue(depositQueue).recordFailedDeposit(
+            depositRecords[depositId].user,
+            depositRecords[depositId].srcEid,
+            token,
+            amount,
+            depositRecords[depositId].vault,
+            depositRecords[depositId].guid,
+            reason,
+            sharePrice
+        );
     }
 
     // ================== ADMIN ==================

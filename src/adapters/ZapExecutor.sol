@@ -9,7 +9,7 @@ import { Call } from "../interfaces/IVaultBase.sol";
 /**
  * @title ZapExecutor
  * @notice Helper contract to isolate arbitrary external calls from the main adapter.
- * @dev This contract is stateless and holds no funds between transactions.
+ * @dev This contract is stateless and holds no funds after the call
  */
 contract ZapExecutor {
     using SafeERC20 for IERC20;
@@ -54,20 +54,21 @@ contract ZapExecutor {
 
         if (shares == 0) revert DepositFailedNoShares();
 
-        // 5. Sweep any remaining input tokens back to receiver (dust)
-        uint256 remaining = IERC20(tokenIn).balanceOf(address(this));
-        if (remaining > 0) {
-            IERC20(tokenIn).safeTransfer(receiver, remaining);
-        }
+        // Sweep tokens 
+        sweepToken(tokenIn);
+        sweepToken(asset);
+        sweepNative();
     }
 
     /// @notice contract is design to be stateless -> allow anyone to sweep any dust token that is in the contract
-    function sweepToken(address token) external {
+    function sweepToken(address token) public {
+        if (IERC20(token).balanceOf(address(this)) == 0) return;
         IERC20(token).safeTransfer(msg.sender, IERC20(token).balanceOf(address(this)));
     }
 
     /// @notice contract is design to be stateless -> allow anyone to sweep any dust native that is in the contract
-    function sweepNative() external {
+    function sweepNative() public {
+        if (address(this).balance == 0) return;
         payable(msg.sender).transfer(address(this).balance);
     }
 }

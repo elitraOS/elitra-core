@@ -111,14 +111,14 @@ contract CrosschainDepositQueue is
     /**
      * @inheritdoc ICrosschainDepositQueue
      */
-    function resolveFailedDeposit(uint256 depositId, address recipient) external override onlyOwnerOrOperator {
+    function refundFailedDeposit(uint256 depositId) external override onlyOwnerOrOperator {
         FailedDeposit storage deposit = failedDeposits[depositId];
         require(deposit.status == DepositStatus.Failed, "Not failed status");
-        require(recipient != address(0), "Invalid recipient");
+        require(deposit.user != address(0), "Invalid recipient");
 
         deposit.status = DepositStatus.Resolved;
 
-        IERC20(deposit.token).safeTransfer(recipient, deposit.amount);
+        IERC20(deposit.token).safeTransfer(deposit.user, deposit.amount);
 
         emit DepositResolved(depositId, deposit.user, deposit.token, deposit.amount, false);
     }
