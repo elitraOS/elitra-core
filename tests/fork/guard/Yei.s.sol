@@ -50,6 +50,9 @@ contract GuardForkTest is Test {
     function test_yei_pool_guard() public {
         vm.startPrank(owner);
 
+        // deal token for vault 
+        deal(address(asset), address(vault), 1000000);
+
         // YEi deposit selector: supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)
         bytes4 selector = bytes4(keccak256("supply(address,uint256,address,uint16)"));
         console.logBytes4(selector);
