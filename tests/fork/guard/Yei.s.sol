@@ -39,7 +39,6 @@ contract GuardForkTest is Test {
         // Get the owner from the deployed contract
         owner = vault.owner();
 
-        wseiGuard = new WNativeGuard(owner);
 
         console.log("=== BSC Mainnet Fork Test Setup ===");
         console.log("Vault:", address(vault));
@@ -50,17 +49,6 @@ contract GuardForkTest is Test {
 
     function test_yei_pool_guard() public {
         vm.startPrank(owner);
-        // get vault asset balance
-        uint256 assetBalance = IERC20(asset).balanceOf(address(vault));
-        console.log("Asset Balance:", assetBalance);
-
-        // View current yei pool guard 
-        address yeiPoolGuard = address(vault.guards(YEI_POOL));
-        console.log("Yei Pool Guard:", yeiPoolGuard);
-
-        // View current asset guard
-        address assetGuard = address(vault.guards(address(asset)));
-        console.log("Asset Guard:", assetGuard);
 
         // YEi deposit selector: supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)
         bytes4 selector = bytes4(keccak256("supply(address,uint256,address,uint16)"));
@@ -71,10 +59,6 @@ contract GuardForkTest is Test {
         bytes memory data = abi.encodeWithSelector(selector, address(asset), 1000000, address(vault), 0);
         // Try to deposit to yei
 
-        wseiGuard.setSpender(YEI_POOL, true);
-
-        // Set guard for the vault
-        vault.setGuard(address(asset), address(wseiGuard));
 
         // Call[0], we need to approve the asset to the yei pool
         Call[] memory calls = new Call[](2);
