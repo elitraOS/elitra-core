@@ -21,5 +21,23 @@
 
 TX_HASH ?= 0xaf11442d89079ad6a533fe1b6b66423d4b38945cca7631661b33bc0896078933
 
+# Usage:
+#   make test                      # uses foundry.toml default evm_version (cancun)
+#   make test EVM=shanghai         # override
+#   make test EVM=cacun            # typo-safe -> cancun
+EVM ?=
+
+.PHONY: test
+test:
+	@EVM_NORMALIZED="$(EVM)"; \
+	if [ "$$EVM_NORMALIZED" = "cacun" ]; then EVM_NORMALIZED="cancun"; fi; \
+	if [ -n "$$EVM_NORMALIZED" ]; then \
+		echo "Running forge test with --evm-version=$$EVM_NORMALIZED"; \
+		forge test --evm-version "$$EVM_NORMALIZED"; \
+	else \
+		echo "Running forge test (using foundry.toml evm_version)"; \
+		forge test; \
+	fi
+
 get-cctp-attestation:
 	curl -s "https://iris-api.circle.com/v2/messages/6?transactionHash=$(TX_HASH)" > cctp-attestation.json

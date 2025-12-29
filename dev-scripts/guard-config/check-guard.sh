@@ -1,0 +1,1 @@
+cast call $VAULT_ADDRESS "guards(address)" $ASSET_ADDRESS --rpc-url $RPC_URL
