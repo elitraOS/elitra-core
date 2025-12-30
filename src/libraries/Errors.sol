@@ -37,4 +37,7 @@ library Errors {
 
     /// @notice Thrown when the transaction validation fails for a target
     error TransactionValidationFailed(address target);
+
+    /// @notice Thrown when NAV/PPS data is stale (not updated within threshold)
+    error StaleNav();
 }
