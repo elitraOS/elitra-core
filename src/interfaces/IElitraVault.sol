@@ -24,6 +24,7 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     event RedeemRequest(address indexed receiver, address indexed owner, uint256 assets, uint256 shares, bool instant);
     event RequestFulfilled(address indexed receiver, uint256 shares, uint256 assets);
     event RequestCancelled(address indexed receiver, uint256 shares, uint256 assets);
+    event NavFreshnessThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
 
     // Balance update hook integration
     function updateBalance(uint256 newAggregatedBalance) external;
@@ -32,6 +33,11 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     function lastBlockUpdated() external view returns (uint256);
     function lastPricePerShare() external view returns (uint256);
     function aggregatedUnderlyingBalances() external view returns (uint256);
+
+    // NAV freshness
+    function navFreshnessThreshold() external view returns (uint256);
+    function lastTimestampUpdated() external view returns (uint256);
+    function setNavFreshnessThreshold(uint256 threshold) external;
 
     // Redemption hook integration
     function setRedemptionHook(IRedemptionHook hook) external;

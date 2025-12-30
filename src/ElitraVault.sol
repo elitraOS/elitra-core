@@ -36,6 +36,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     uint256 public lastBlockUpdated;
     uint256 public lastPricePerShare;
 
+    // NAV freshness state
+    uint256 public navFreshnessThreshold; // Maximum allowed time (in seconds) since last NAV update
+    uint256 public lastTimestampUpdated;  // Timestamp of last NAV update
+
     // Redemption state
     IRedemptionHook public redemptionHook;
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
@@ -97,6 +101,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
         lastBlockUpdated = block.number;
+        lastTimestampUpdated = block.timestamp;
 
         emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
     }
@@ -110,6 +115,21 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         require(address(newAdapter) != address(0), Errors.ZeroAddress());
         emit BalanceUpdateHookUpdated(address(balanceUpdateHook), address(newAdapter));
         balanceUpdateHook = newAdapter;
+    }
+
+    /// @notice Set the NAV freshness threshold
+    /// @param newThreshold Maximum allowed time (in seconds) since last NAV update. Set to 0 to disable check.
+    function setNavFreshnessThreshold(uint256 newThreshold) external requiresAuth {
+        emit NavFreshnessThresholdUpdated(navFreshnessThreshold, newThreshold);
+        navFreshnessThreshold = newThreshold;
+    }
+
+    /// @notice Check if NAV is fresh (updated within threshold)
+    /// @dev Reverts if navFreshnessThreshold > 0 and NAV is stale
+    function _requireFreshNav() internal view {
+        if (navFreshnessThreshold > 0 && block.timestamp > lastTimestampUpdated + navFreshnessThreshold) {
+            revert Errors.StaleNav();
+        }
     }
 
     // ========================================= REDEMPTION INTEGRATION =========================================
@@ -126,6 +146,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         (RedemptionMode mode, uint256 actualAssets) = redemptionHook.beforeRedeem(this, shares, assets, owner, receiver);
 
         if (mode == RedemptionMode.INSTANT) {
+            _requireFreshNav(); // Instant redemptions require fresh NAV
             _withdraw(owner, receiver, owner, actualAssets, shares);
             emit RedeemRequest(receiver, owner, actualAssets, shares, true);
             return actualAssets;
@@ -227,6 +248,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         whenNotPaused
         returns (uint256)
     {
+        _requireFreshNav();
         return super.deposit(assets, receiver);
     }
 
@@ -239,6 +261,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         whenNotPaused
         returns (uint256)
     {
+        _requireFreshNav();
         return super.mint(shares, receiver);
     }
 
