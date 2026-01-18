@@ -285,7 +285,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     )
         public
         override(ERC4626Upgradeable, IERC4626Upgradeable)
-        whenNotPaused
         returns (uint256)
     {
         return requestRedeem(shares, receiver, owner);
