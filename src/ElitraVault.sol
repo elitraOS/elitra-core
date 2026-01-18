@@ -138,6 +138,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     function requestRedeem(uint256 shares, address receiver, address owner) public whenNotPaused returns (uint256) {
         require(shares > 0, Errors.SharesAmountZero());
         require(owner == msg.sender, Errors.NotSharesOwner());
+        require(receiver != address(0), Errors.ZeroAddress());
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
 
         uint256 assets = previewRedeem(shares);
