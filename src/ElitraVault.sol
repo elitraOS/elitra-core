@@ -152,6 +152,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             return actualAssets;
         } else if (mode == RedemptionMode.QUEUED) {
             // Queue the redemption
+            _requireFreshNav(); // Queued redemptions require fresh NAV
             _transfer(owner, address(this), shares);
             totalPendingAssets += actualAssets;
 
