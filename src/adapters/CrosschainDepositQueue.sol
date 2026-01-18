@@ -111,10 +111,18 @@ contract CrosschainDepositQueue is
     /**
      * @inheritdoc ICrosschainDepositQueue
      */
-    function refundFailedDeposit(uint256 depositId) external override onlyOwnerOrOperator {
+    function refundFailedDeposit(uint256 depositId) external override {
         FailedDeposit storage deposit = failedDeposits[depositId];
         require(deposit.status == DepositStatus.Failed, "Not failed status");
         require(deposit.user != address(0), "Invalid recipient");
+        
+        // Allow either owner/operator OR the original user to refund
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || 
+            hasRole(OPERATOR_ROLE, msg.sender) || 
+            msg.sender == deposit.user,
+            "Not authorized"
+        );
 
         deposit.status = DepositStatus.Resolved;
 
