@@ -30,7 +30,7 @@ contract Deploy_MerklDistributorGuard is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         console2.log("\nDeploying MerklDistributorGuard...");
-        MerklDistributorGuard guard = new MerklDistributorGuard(deployer, vaultAddress);
+        MerklDistributorGuard guard = new MerklDistributorGuard(vaultAddress);
         console2.log("MerklDistributorGuard:", address(guard));
 
         vm.stopBroadcast();

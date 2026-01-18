@@ -40,4 +40,7 @@ library Errors {
 
     /// @notice Thrown when NAV/PPS data is stale (not updated within threshold)
     error StaleNav();
+
+    /// @notice Thrown when the max percentage threshold is invalid
+    error InvalidPercentageThreshold();
 }

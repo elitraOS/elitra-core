@@ -2,13 +2,12 @@
 pragma solidity 0.8.28;
 
 import { ITransactionGuard } from "../../interfaces/ITransactionGuard.sol";
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title MorphoVaultGuard
 /// @author Elitra
 /// @notice Guard for ERC4626/Morpho vault operations (deposit/withdraw).
 /// @dev Restricts deposit receiver and withdraw receiver/owner to be the vault.
-contract MorphoVaultGuard is ITransactionGuard, Ownable {
+contract MorphoVaultGuard is ITransactionGuard {
     /// @notice deposit(uint256,address) selector
     bytes4 public constant DEPOSIT_SELECTOR = 0x6e553f65;
 
@@ -18,11 +17,9 @@ contract MorphoVaultGuard is ITransactionGuard, Ownable {
     /// @notice The vault address that this guard protects
     address public immutable vault;
 
-    /// @notice Initializes the guard with the owner and vault
-    /// @param _owner The address of the owner
+    /// @notice Initializes the guard with the vault
     /// @param _vault The vault address that must be the receiver/owner
-    constructor(address _owner, address _vault) {
-        _transferOwnership(_owner);
+    constructor(address _vault) {
         vault = _vault;
     }
 
