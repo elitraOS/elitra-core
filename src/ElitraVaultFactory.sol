@@ -69,6 +69,9 @@ contract ElitraVaultFactory {
         require(seedReceiver != address(0), "receiver zero");
         require(vaultBySalt[salt] == address(0), "salt used");
 
+        // Derive caller-specific salt to prevent front-running
+        bytes32 effectiveSalt = keccak256(abi.encodePacked(salt, msg.sender));
+
         bytes memory initData = abi.encodeWithSelector(
             ElitraVault.initialize.selector,
             asset,
@@ -79,7 +82,7 @@ contract ElitraVaultFactory {
             symbol
         );
 
-        vault = payable(address(new ERC1967Proxy{salt: salt}(implementation, initData)));
+        vault = payable(address(new ERC1967Proxy{salt: effectiveSalt}(implementation, initData)));
 
         // Pull seed assets and deposit to set an initial PPS
         asset.safeTransferFrom(msg.sender, address(this), initialSeed);
@@ -93,17 +96,20 @@ contract ElitraVaultFactory {
         emit VaultDeployed(vault, address(asset), owner, salt, initialSeed, seedReceiver);
     }
 
-    /// @notice Predict the proxy address for a given salt and init params.
+    /// @notice Predict the proxy address for a given salt, caller, and init params.
     /// @dev Helper for off-chain tooling / pre-approvals.
     function predictAddress(
         bytes32 salt,
+        address caller,
         bytes memory initData
     ) external view returns (address predicted) {
+        // Derive caller-specific salt (must match deployAndSeed logic)
+        bytes32 effectiveSalt = keccak256(abi.encodePacked(salt, caller));
         bytes memory creation = abi.encodePacked(
             type(ERC1967Proxy).creationCode,
             abi.encode(implementation, initData)
         );
-        bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), salt, keccak256(creation)));
+        bytes32 hash = keccak256(abi.encodePacked(bytes1(0xff), address(this), effectiveSalt, keccak256(creation)));
         predicted = address(uint160(uint256(hash)));
     }
 
