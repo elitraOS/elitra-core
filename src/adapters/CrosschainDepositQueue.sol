@@ -82,7 +82,9 @@ contract CrosschainDepositQueue is
         address vault,
         bytes32 guid,
         bytes calldata reason,
-        uint256 sharePrice
+        uint256 sharePrice,
+        uint256 minAmountOut,
+        Call[] calldata zapCalls
     ) external override onlyAdapter {
         // Transfer tokens from adapter to this contract
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -100,6 +102,8 @@ contract CrosschainDepositQueue is
             failureReason: reason,
             timestamp: block.timestamp,
             sharePrice: sharePrice,
+            minAmountOut: minAmountOut,
+            zapCallsHash: keccak256(abi.encode(zapCalls)),
             status: DepositStatus.Failed
         });
 
@@ -128,7 +132,6 @@ contract CrosschainDepositQueue is
      */
     function fulfillFailedDeposit(
         uint256 depositId,
-        uint256 minAssetOut,
         uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external override onlyOwnerOrOperator returns (uint256 sharesOut) {
@@ -148,9 +151,12 @@ contract CrosschainDepositQueue is
             sharesOut = vault.deposit(deposit.amount, deposit.user);
             require(sharesOut >= minSharesOut, "Shares below minimum");
         } else {
-            // Zap path
+            // Zap path - verify zapCalls matches original attested data
             require(zapExecutor != address(0), "Zap executor not set");
-            require(minAssetOut > 0, "minAssetOut=0");
+            require(
+                keccak256(abi.encode(zapCalls)) == deposit.zapCallsHash,
+                "zapCalls mismatch"
+            );
 
             IERC20(deposit.token).safeApprove(zapExecutor, 0);
             IERC20(deposit.token).safeApprove(zapExecutor, deposit.amount);
@@ -160,7 +166,7 @@ contract CrosschainDepositQueue is
                 deposit.amount,
                 deposit.vault,
                 deposit.user,
-                minAssetOut,
+                deposit.minAmountOut, // Use original attested minAmountOut
                 zapCalls
             );
             require(sharesOut >= minSharesOut, "Shares below minimum");
