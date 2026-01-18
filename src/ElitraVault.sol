@@ -100,14 +100,14 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         // Update own state
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
-        lastBlockUpdated = block.number;
-        lastTimestampUpdated = block.timestamp;
 
         emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
     }
 
     function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
         _updateBalance(newAggregatedBalance);
+        lastBlockUpdated = block.number;  // Only external syncs reset NAV freshness
+        lastTimestampUpdated = block.timestamp;
     }
 
     /// @inheritdoc IElitraVault
