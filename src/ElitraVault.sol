@@ -152,9 +152,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             emit RedeemRequest(receiver, owner, actualAssets, shares, true);
             return actualAssets;
         } else if (mode == RedemptionMode.QUEUED) {
-            // Queue the redemption
-            _requireFreshNav(); // Queued redemptions require fresh NAV
-            _transfer(owner, address(this), shares);
+            // Queue the redemption: burn shares and virtually remove assets from totalAssets
+            _burn(owner, shares);
             totalPendingAssets += actualAssets;
 
             PendingRedeem storage pending = _pendingRedeem[receiver];
@@ -179,7 +178,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         totalPendingAssets -= assets;
 
         emit RequestFulfilled(receiver, shares, assets);
-        _withdraw(address(this), receiver, address(this), assets, shares);
+        // Shares already burned at request time, just transfer assets
+        IERC20(asset()).safeTransfer(receiver, assets);
     }
 
     /// @inheritdoc IElitraVault
@@ -192,8 +192,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
-        emit RequestCancelled(receiver, shares, assets);
-        _transfer(address(this), receiver, shares);
+        // Mint shares at CURRENT price (based on originally recorded assets)
+        uint256 sharesToMint = previewDeposit(assets);
+        emit RequestCancelled(receiver, sharesToMint, assets);
+        _mint(receiver, sharesToMint);
     }
 
     /// @inheritdoc IElitraVault
@@ -243,7 +245,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     // ========================================= ERC4626 OVERRIDES =========================================
 
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
-        return IERC20(asset()).balanceOf(address(this)) + aggregatedUnderlyingBalances;
+        // Subtract totalPendingAssets to virtually remove queued redemption assets from share price calculation
+        uint256 total = IERC20(asset()).balanceOf(address(this)) + aggregatedUnderlyingBalances;
+        return total > totalPendingAssets ? total - totalPendingAssets : 0;
     }
 
     function deposit(
