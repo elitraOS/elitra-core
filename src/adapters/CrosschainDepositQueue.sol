@@ -142,18 +142,20 @@ contract CrosschainDepositQueue is
 
         if (deposit.token == vaultAsset) {
             // Direct deposit path
-            IERC20(vaultAsset).safeApprove(address(vault), 0);
-            IERC20(vaultAsset).safeApprove(address(vault), deposit.amount);
+            IERC20(vaultAsset).forceApprove(address(vault), deposit.amount);
 
             sharesOut = vault.deposit(deposit.amount, deposit.user);
+
+            // Reset approval for defensive safety
+            IERC20(vaultAsset).forceApprove(address(vault), 0);
+
             require(sharesOut >= minSharesOut, "Shares below minimum");
         } else {
             // Zap path
             require(zapExecutor != address(0), "Zap executor not set");
             require(minAssetOut > 0, "minAssetOut=0");
 
-            IERC20(deposit.token).safeApprove(zapExecutor, 0);
-            IERC20(deposit.token).safeApprove(zapExecutor, deposit.amount);
+            IERC20(deposit.token).forceApprove(zapExecutor, deposit.amount);
 
             sharesOut = ZapExecutor(zapExecutor).executeZapAndDeposit(
                 deposit.token,
@@ -163,6 +165,10 @@ contract CrosschainDepositQueue is
                 minAssetOut,
                 zapCalls
             );
+
+            // Reset approval for defensive safety
+            IERC20(deposit.token).forceApprove(zapExecutor, 0);
+
             require(sharesOut >= minSharesOut, "Shares below minimum");
         }
 

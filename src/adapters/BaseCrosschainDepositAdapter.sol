@@ -91,8 +91,11 @@ abstract contract BaseCrosschainDepositAdapter is
         uint256 depositId = _recordDeposit(receiver, sourceId, token, amount, vault, messageId);
 
         // 3. Validate
+        // 3. Validate
         if (!supportedVaults[vault]) {
-            _handleDepositFailure(depositId, token, amount, abi.encodeWithSelector(VaultNotSupported.selector));
+            bytes memory reason = abi.encodeWithSelector(VaultNotSupported.selector);
+            depositRecords[depositId].failureReason = reason;
+            _handleDepositFailure(depositId, token, amount, reason);
             return;
         }
 
@@ -147,6 +150,9 @@ abstract contract BaseCrosschainDepositAdapter is
 
             IERC20(asset).forceApprove(vault, amount);
             shares = IElitraVault(vault).deposit(amount, receiver);
+
+            // Reset approval for defensive safety
+            IERC20(asset).forceApprove(vault, 0);
         }
     }
 
