@@ -192,10 +192,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
-        // Mint shares at CURRENT price (based on originally recorded assets)
-        uint256 sharesToMint = previewDeposit(assets);
-        emit RequestCancelled(receiver, sharesToMint, assets);
-        _mint(receiver, sharesToMint);
+        // Mint back the same number of shares that were burned at request time
+        emit RequestCancelled(receiver, shares, assets);
+        _mint(receiver, shares);
     }
 
     /// @inheritdoc IElitraVault
