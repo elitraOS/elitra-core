@@ -22,6 +22,12 @@ contract ManualBalanceUpdateHook is IBalanceUpdateHook, Auth {
         maxPercentageChange = 1e16; // 1% default
     }
 
+    function updateMaxPercentage(uint256 _maxPercentage) external requiresAuth {
+        require(_maxPercentage <= MAX_PERCENTAGE_THRESHOLD, Errors.InvalidPercentageThreshold());
+        emit MaxPercentageUpdated(maxPercentageChange, _maxPercentage);
+        maxPercentageChange = _maxPercentage;
+    }
+
     /// @inheritdoc IBalanceUpdateHook
     function beforeBalanceUpdate(
         uint256 currentPPS,
