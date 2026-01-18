@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { ElitraVault } from "./ElitraVault.sol";
@@ -92,7 +93,13 @@ contract ElitraVaultFactory {
         // Dead shares: mint bootstrap shares to factory to prevent inflation attacks
         // Also validates no share manipulation occurred (front-run donation attack)
         uint256 bootstrapShares = ElitraVault(vault).deposit(BOOTSTRAP_AMOUNT, address(this));
-        require(bootstrapShares >= BOOTSTRAP_AMOUNT * 99 / 100, "share manipulation");
+        
+        // Normalize to 1e18 base to handle different asset/share decimals
+        uint8 shareDecimals = ElitraVault(vault).decimals();
+        uint8 assetDecimals = IERC20Metadata(address(asset)).decimals();
+        uint256 normalizedShares = bootstrapShares * 1e18 / (10 ** shareDecimals);
+        uint256 normalizedExpected = BOOTSTRAP_AMOUNT * 1e18 / (10 ** assetDecimals);
+        require(normalizedShares >= normalizedExpected * 99 / 100, "share manipulation");
 
         // Remaining shares go to seedReceiver
         shares = ElitraVault(vault).deposit(initialSeed - BOOTSTRAP_AMOUNT, seedReceiver);
@@ -127,5 +134,6 @@ contract ElitraVaultFactory {
     function getVaultsByAsset(address asset) external view returns (address[] memory) {
         return vaultsByAsset[asset];
     }
+
 }
 
