@@ -31,7 +31,7 @@ contract MorphoVaultGuard is ITransactionGuard, Ownable {
         bytes4 sig = bytes4(data);
 
         if (sig == DEPOSIT_SELECTOR) {
-            // deposit(uint256 assets, address receiver)
+            // deposit(uint256 assets, address onBehalf)
             // calldata: [4 selector][32 assets][32 receiver]
             (, address receiver) = abi.decode(data[4:], (uint256, address));
 
@@ -40,7 +40,7 @@ contract MorphoVaultGuard is ITransactionGuard, Ownable {
         }
 
         if (sig == WITHDRAW_SELECTOR) {
-            // withdraw(uint256 assets, address receiver, address owner)
+            // withdraw(uint256 assets, address receiver, address onBehalf)
             // calldata: [4 selector][32 assets][32 receiver][32 owner]
             (, address receiver, address owner) = abi.decode(data[4:], (uint256, address, address));
 
