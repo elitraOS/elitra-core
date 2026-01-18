@@ -71,18 +71,22 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, UUPSUpgrade
     /// @param guard The guard contract address
     function setGuard(address target, address guard) external virtual requiresAuth {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
-        vaultBaseStorage.guards[target] = ITransactionGuard(guard);
-        vaultBaseStorage.guardedTargets.add(target);
-        emit GuardUpdated(target, guard);
+        bool added = vaultBaseStorage.guardedTargets.add(target);
+        // Only update and emit if something changed (either new target or different guard)
+        if (added || vaultBaseStorage.guards[target] != ITransactionGuard(guard)) {
+            vaultBaseStorage.guards[target] = ITransactionGuard(guard);
+            emit GuardUpdated(target, guard);
+        }
     }
 
     /// @notice Removes the guard for a specific target
     /// @param target The target contract address
     function removeGuard(address target) external virtual requiresAuth {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
-        delete vaultBaseStorage.guards[target];
-        vaultBaseStorage.guardedTargets.remove(target);
-        emit GuardRemoved(target);
+        if (vaultBaseStorage.guardedTargets.remove(target)) {
+            delete vaultBaseStorage.guards[target];
+            emit GuardRemoved(target);
+        }
     }
 
     /// @notice Returns the guard for a specific target
@@ -98,12 +102,16 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, UUPSUpgrade
     /// @param isTrusted Whether the target is trusted
     function setTrustedTarget(address target, bool isTrusted) external virtual requiresAuth {
         VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        bool changed;
         if (isTrusted) {
-            vaultBaseStorage.trustedTargets.add(target);
+            changed = vaultBaseStorage.trustedTargets.add(target);
         } else {
-            vaultBaseStorage.trustedTargets.remove(target);
+            changed = vaultBaseStorage.trustedTargets.remove(target);
         }
-        emit TrustedTargetUpdated(target, isTrusted);
+        
+        if (changed) {
+            emit TrustedTargetUpdated(target, isTrusted);
+        }
     }
 
     /// @notice Returns whether a target is trusted
