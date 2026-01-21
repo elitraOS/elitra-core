@@ -63,7 +63,7 @@ contract Deploy_CrosschainDepositAdapter is Script {
 
         // Set adapter on the queue
         console2.log("\nSetting adapter on queue...");
-        CrosschainDepositQueue(queueAddress).setAdapterRegistration(address(adapterProxy), true);
+        CrosschainDepositQueue(payable(queueAddress)).setAdapterRegistration(address(adapterProxy), true);
         console2.log("Adapter set on queue successfully");
 
         vm.stopBroadcast();

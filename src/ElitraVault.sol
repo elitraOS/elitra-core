@@ -100,14 +100,14 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         // Update own state
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
-        lastBlockUpdated = block.number;
-        lastTimestampUpdated = block.timestamp;
 
         emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
     }
 
     function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
         _updateBalance(newAggregatedBalance);
+        lastBlockUpdated = block.number;  // Only external syncs reset NAV freshness
+        lastTimestampUpdated = block.timestamp;
     }
 
     /// @inheritdoc IElitraVault
@@ -153,6 +153,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             return actualAssets;
         } else if (mode == RedemptionMode.QUEUED) {
             // Queue the redemption
+            _requireFreshNav(); // Queued redemptions require fresh NAV
             _transfer(owner, address(this), shares);
             totalPendingAssets += actualAssets;
 
@@ -225,6 +226,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         if (afterBalance != beforeBalance) {
             uint256 balanceChange =
                 afterBalance > beforeBalance ? afterBalance - beforeBalance : beforeBalance - afterBalance;
+
+            // Prevent underflow when funds come in
+            if (afterBalance > beforeBalance) {
+                require(balanceChange <= aggregatedUnderlyingBalances, "Balance change exceeds external balances");
+            }
 
             uint256 newAggregatedUnderlyingBalances = afterBalance > beforeBalance
                 ? aggregatedUnderlyingBalances - balanceChange  // funds came In, -> extenal balances when down

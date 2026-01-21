@@ -82,7 +82,9 @@ contract CrosschainDepositQueue is
         address vault,
         bytes32 guid,
         bytes calldata reason,
-        uint256 sharePrice
+        uint256 sharePrice,
+        uint256 minAmountOut,
+        Call[] calldata zapCalls
     ) external override onlyAdapter {
         // Transfer tokens from adapter to this contract
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -100,6 +102,8 @@ contract CrosschainDepositQueue is
             failureReason: reason,
             timestamp: block.timestamp,
             sharePrice: sharePrice,
+            minAmountOut: minAmountOut,
+            zapCallsHash: keccak256(abi.encode(zapCalls)),
             status: DepositStatus.Failed
         });
 
@@ -111,10 +115,18 @@ contract CrosschainDepositQueue is
     /**
      * @inheritdoc ICrosschainDepositQueue
      */
-    function refundFailedDeposit(uint256 depositId) external override onlyOwnerOrOperator {
+    function refundFailedDeposit(uint256 depositId) external override {
         FailedDeposit storage deposit = failedDeposits[depositId];
         require(deposit.status == DepositStatus.Failed, "Not failed status");
         require(deposit.user != address(0), "Invalid recipient");
+        
+        // Allow either owner/operator OR the original user to refund
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || 
+            hasRole(OPERATOR_ROLE, msg.sender) || 
+            msg.sender == deposit.user,
+            "Not authorized"
+        );
 
         deposit.status = DepositStatus.Resolved;
 
@@ -128,7 +140,6 @@ contract CrosschainDepositQueue is
      */
     function fulfillFailedDeposit(
         uint256 depositId,
-        uint256 minAssetOut,
         uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external override onlyOwnerOrOperator returns (uint256 sharesOut) {
@@ -151,9 +162,12 @@ contract CrosschainDepositQueue is
 
             require(sharesOut >= minSharesOut, "Shares below minimum");
         } else {
-            // Zap path
+            // Zap path - verify zapCalls matches original attested data
             require(zapExecutor != address(0), "Zap executor not set");
-            require(minAssetOut > 0, "minAssetOut=0");
+            require(
+                keccak256(abi.encode(zapCalls)) == deposit.zapCallsHash,
+                "zapCalls mismatch"
+            );
 
             IERC20(deposit.token).forceApprove(zapExecutor, deposit.amount);
 
@@ -162,7 +176,7 @@ contract CrosschainDepositQueue is
                 deposit.amount,
                 deposit.vault,
                 deposit.user,
-                minAssetOut,
+                deposit.minAmountOut, // Use original attested minAmountOut
                 zapCalls
             );
 
@@ -219,5 +233,34 @@ contract CrosschainDepositQueue is
      */
     function isAdapterRegistered(address _adapter) external view override returns (bool) {
         return registeredAdapters[_adapter];
+    }
+
+    // ========================================= RECOVERY FUNCTIONS =========================================
+
+    /// @notice Accept native ETH (required for ZapExecutor sweep)
+    receive() external payable {}
+
+    /// @notice Recover stuck ERC20 tokens
+    /// @param token Token address to recover
+    /// @param to Recipient address
+    /// @param amount Amount to recover (0 for full balance)
+    function recoverToken(address token, address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(to != address(0), "Invalid recipient");
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        uint256 toRecover = amount == 0 ? balance : amount;
+        require(toRecover <= balance, "Insufficient balance");
+        IERC20(token).safeTransfer(to, toRecover);
+    }
+
+    /// @notice Recover stuck native ETH
+    /// @param to Recipient address
+    /// @param amount Amount to recover (0 for full balance)
+    function recoverNative(address payable to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(to != address(0), "Invalid recipient");
+        uint256 balance = address(this).balance;
+        uint256 toRecover = amount == 0 ? balance : amount;
+        require(toRecover <= balance, "Insufficient balance");
+        (bool success, ) = to.call{value: toRecover}("");
+        require(success, "ETH transfer failed");
     }
 }
