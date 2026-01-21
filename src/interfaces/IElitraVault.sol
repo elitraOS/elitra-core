@@ -24,6 +24,10 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     event RequestFulfilled(address indexed receiver, uint256 assets);
     event RequestCancelled(address indexed receiver, uint256 assets, uint256 sharesMinted);
     event NavFreshnessThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
+    event DepositFeeUpdated(uint256 oldFee, uint256 newFee);
+    event WithdrawFeeUpdated(uint256 oldFee, uint256 newFee);
+    event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
+    event FeesClaimed(address indexed recipient, uint256 amount);
 
     // Balance update hook integration
     function updateBalance(uint256 newAggregatedBalance) external;
@@ -46,4 +50,14 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     function fulfillRedeem(address receiver, uint256 assets) external;
     function cancelRedeem(address receiver, uint256 assets) external;
     function pendingRedeemRequest(address user) external view returns (uint256 assets);
+
+    // Fee management
+    function feeOnDeposit() external view returns (uint256);
+    function feeOnWithdraw() external view returns (uint256);
+    function feeRecipient() external view returns (address);
+    function pendingFees() external view returns (uint256);
+    function setDepositFee(uint256 newFee) external;
+    function setWithdrawFee(uint256 newFee) external;
+    function setFeeRecipient(address newRecipient) external;
+    function claimFees() external;
 }
