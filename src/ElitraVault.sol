@@ -226,6 +226,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             uint256 balanceChange =
                 afterBalance > beforeBalance ? afterBalance - beforeBalance : beforeBalance - afterBalance;
 
+            // Prevent underflow when funds come in
+            if (afterBalance > beforeBalance) {
+                require(balanceChange <= aggregatedUnderlyingBalances, "Balance change exceeds external balances");
+            }
+
             uint256 newAggregatedUnderlyingBalances = afterBalance > beforeBalance
                 ? aggregatedUnderlyingBalances - balanceChange  // funds came In, -> extenal balances when down
                 : aggregatedUnderlyingBalances + balanceChange; // funds went out, -> extenal balances when up
