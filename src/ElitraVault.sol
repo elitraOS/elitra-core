@@ -157,7 +157,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             totalPendingAssets += actualAssets;
 
             PendingRedeem storage pending = _pendingRedeem[receiver];
-            pending.shares += shares;
             pending.assets += actualAssets;
 
             emit RedeemRequest(receiver, owner, actualAssets, shares, false);
@@ -168,33 +167,31 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     }
 
     /// @inheritdoc IElitraVault
-    function fulfillRedeem(address receiver, uint256 shares, uint256 assets) external requiresAuth {
+    function fulfillRedeem(address receiver, uint256 assets) external requiresAuth {
         PendingRedeem storage pending = _pendingRedeem[receiver];
-        require(pending.shares != 0 && shares <= pending.shares, Errors.InvalidSharesAmount());
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
-        pending.shares -= shares;
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
-        emit RequestFulfilled(receiver, shares, assets);
+        emit RequestFulfilled(receiver, assets);
         // Shares already burned at request time, just transfer assets
         IERC20(asset()).safeTransfer(receiver, assets);
     }
 
     /// @inheritdoc IElitraVault
-    function cancelRedeem(address receiver, uint256 shares, uint256 assets) external requiresAuth {
+    function cancelRedeem(address receiver, uint256 assets) external requiresAuth {
         PendingRedeem storage pending = _pendingRedeem[receiver];
-        require(pending.shares != 0 && shares <= pending.shares, Errors.InvalidSharesAmount());
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
-        pending.shares -= shares;
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
-        // Mint back the same number of shares that were burned at request time
-        emit RequestCancelled(receiver, shares, assets);
-        _mint(receiver, shares);
+        // Mint shares based on current price to avoid price distortion
+        uint256 sharesToMint = previewDeposit(assets);
+
+        emit RequestCancelled(receiver, assets, sharesToMint);
+        _mint(receiver, sharesToMint);
     }
 
     /// @inheritdoc IElitraVault
@@ -211,8 +208,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     }
 
     /// @inheritdoc IElitraVault
-    function pendingRedeemRequest(address user) public view returns (uint256 assets, uint256 pendingShares) {
-        return (_pendingRedeem[user].assets, _pendingRedeem[user].shares);
+    function pendingRedeemRequest(address user) public view returns (uint256 assets) {
+        return _pendingRedeem[user].assets;
     }
 
     function manageBatch(Call[] calldata calls) public payable override(VaultBase, IVaultBase) {

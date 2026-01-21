@@ -18,8 +18,6 @@ export interface ElitraConfig {
 export interface PendingRedeem {
   /** Amount of assets pending redemption */
   assets: bigint;
-  /** Amount of shares pending redemption */
-  shares: bigint;
 }
 
 /**

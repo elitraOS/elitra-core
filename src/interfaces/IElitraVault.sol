@@ -11,7 +11,6 @@ import { IVaultBase, Call } from "./IVaultBase.sol";
 interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     /// @notice Pending redemption data structure
     struct PendingRedeem {
-        uint256 shares;
         uint256 assets;
     }
 
@@ -22,8 +21,8 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     event BalanceUpdateHookUpdated(address indexed oldHook, address indexed newHook);
     event RedemptionHookUpdated(address indexed oldHook, address indexed newHook);
     event RedeemRequest(address indexed receiver, address indexed owner, uint256 assets, uint256 shares, bool instant);
-    event RequestFulfilled(address indexed receiver, uint256 shares, uint256 assets);
-    event RequestCancelled(address indexed receiver, uint256 shares, uint256 assets);
+    event RequestFulfilled(address indexed receiver, uint256 assets);
+    event RequestCancelled(address indexed receiver, uint256 assets, uint256 sharesMinted);
     event NavFreshnessThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
 
     // Balance update hook integration
@@ -44,7 +43,7 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     function redemptionHook() external view returns (IRedemptionHook);
     function getAvailableBalance() external view returns (uint256);
     function requestRedeem(uint256 shares, address receiver, address owner) external returns (uint256);
-    function fulfillRedeem(address receiver, uint256 shares, uint256 assets) external;
-    function cancelRedeem(address receiver, uint256 shares, uint256 assets) external;
-    function pendingRedeemRequest(address user) external view returns (uint256 assets, uint256 pendingShares);
+    function fulfillRedeem(address receiver, uint256 assets) external;
+    function cancelRedeem(address receiver, uint256 assets) external;
+    function pendingRedeemRequest(address user) external view returns (uint256 assets);
 }
