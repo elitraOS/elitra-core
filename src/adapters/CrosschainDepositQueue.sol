@@ -214,4 +214,33 @@ contract CrosschainDepositQueue is
     function isAdapterRegistered(address _adapter) external view override returns (bool) {
         return registeredAdapters[_adapter];
     }
+
+    // ========================================= RECOVERY FUNCTIONS =========================================
+
+    /// @notice Accept native ETH (required for ZapExecutor sweep)
+    receive() external payable {}
+
+    /// @notice Recover stuck ERC20 tokens
+    /// @param token Token address to recover
+    /// @param to Recipient address
+    /// @param amount Amount to recover (0 for full balance)
+    function recoverToken(address token, address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(to != address(0), "Invalid recipient");
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        uint256 toRecover = amount == 0 ? balance : amount;
+        require(toRecover <= balance, "Insufficient balance");
+        IERC20(token).safeTransfer(to, toRecover);
+    }
+
+    /// @notice Recover stuck native ETH
+    /// @param to Recipient address
+    /// @param amount Amount to recover (0 for full balance)
+    function recoverNative(address payable to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        require(to != address(0), "Invalid recipient");
+        uint256 balance = address(this).balance;
+        uint256 toRecover = amount == 0 ? balance : amount;
+        require(toRecover <= balance, "Insufficient balance");
+        (bool success, ) = to.call{value: toRecover}("");
+        require(success, "ETH transfer failed");
+    }
 }
