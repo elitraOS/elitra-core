@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import { ElitraVault } from "./ElitraVault.sol";
@@ -13,6 +14,10 @@ import { IRedemptionHook } from "./interfaces/IRedemptionHook.sol";
 /// @notice Deploys ElitraVault proxies deterministically (CREATE2) and seeds them in a single tx.
 contract ElitraVaultFactory {
     using SafeERC20 for IERC20;
+
+    /// @notice Bootstrap amount for dead shares to prevent inflation attacks.
+    /// @dev These shares are held by the factory and never redeemed.
+    uint256 public constant BOOTSTRAP_AMOUNT = 1000000; 
 
     /// @notice Vault implementation shared by all proxies.
     address public immutable implementation;
@@ -61,7 +66,7 @@ contract ElitraVaultFactory {
         uint256 initialSeed,
         address seedReceiver
     ) external returns (address payable vault, uint256 shares) {
-        require(initialSeed > 0, "seed zero");
+        require(initialSeed > BOOTSTRAP_AMOUNT, "seed too small");
         require(address(asset) != address(0), "asset zero");
         require(owner != address(0), "owner zero");
         require(address(balanceHook) != address(0), "balance hook zero");
@@ -84,7 +89,20 @@ contract ElitraVaultFactory {
         // Pull seed assets and deposit to set an initial PPS
         asset.safeTransferFrom(msg.sender, address(this), initialSeed);
         asset.forceApprove(vault, initialSeed);
-        shares = ElitraVault(vault).deposit(initialSeed, seedReceiver);
+
+        // Dead shares: mint bootstrap shares to factory to prevent inflation attacks
+        // Also validates no share manipulation occurred (front-run donation attack)
+        uint256 bootstrapShares = ElitraVault(vault).deposit(BOOTSTRAP_AMOUNT, address(this));
+        
+        // Normalize to 1e18 base to handle different asset/share decimals
+        uint8 shareDecimals = ElitraVault(vault).decimals();
+        uint8 assetDecimals = IERC20Metadata(address(asset)).decimals();
+        uint256 normalizedShares = bootstrapShares * 1e18 / (10 ** shareDecimals);
+        uint256 normalizedExpected = BOOTSTRAP_AMOUNT * 1e18 / (10 ** assetDecimals);
+        require(normalizedShares >= normalizedExpected * 99 / 100, "share manipulation");
+
+        // Remaining shares go to seedReceiver
+        shares = ElitraVault(vault).deposit(initialSeed - BOOTSTRAP_AMOUNT, seedReceiver);
 
         vaultBySalt[salt] = vault;
         allVaults.push(vault);
@@ -116,5 +134,6 @@ contract ElitraVaultFactory {
     function getVaultsByAsset(address asset) external view returns (address[] memory) {
         return vaultsByAsset[asset];
     }
+
 }
 
