@@ -49,7 +49,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
 
     // Fee state
     uint256 public feeOnDeposit;
-    uint256 public feeOnWithdraw; // only apply on instant withdrawals
+    uint256 public feeOnWithdraw; // fee on instant withdrawals
+    uint256 public feeOnQueuedRedeem; // fee on queued redemptions
     address public feeRecipient;
     uint256 public pendingFees; // Accumulated fees waiting to be claimed
 
@@ -162,12 +163,18 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         } else if (mode == RedemptionMode.QUEUED) {
             // Queue the redemption: burn shares and virtually remove assets from totalAssets
             _burn(owner, shares);
-            totalPendingAssets += actualAssets;
+            
+            // Calculate and accumulate queued redeem fee
+            uint256 feeAmount = _feeOnTotal(actualAssets, feeOnQueuedRedeem);
+            uint256 assetsAfterFee = actualAssets - feeAmount;
+            pendingFees += feeAmount;
+            
+            totalPendingAssets += assetsAfterFee;
 
             PendingRedeem storage pending = _pendingRedeem[receiver];
-            pending.assets += actualAssets;
+            pending.assets += assetsAfterFee;
 
-            emit RedeemRequest(receiver, owner, actualAssets, shares, false);
+            emit RedeemRequest(receiver, owner, assetsAfterFee, shares, false);
             return REQUEST_ID;
         } else {
             revert Errors.InvalidRedemptionMode();
@@ -196,7 +203,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         totalPendingAssets -= assets;
 
         // Mint shares based on current price to avoid price distortion
-        uint256 sharesToMint = previewDeposit(assets);
+        // Use super.previewDeposit to bypass fee - cancel should not charge fee
+        uint256 sharesToMint = super.previewDeposit(assets);
 
         emit RequestCancelled(receiver, assets, sharesToMint);
         _mint(receiver, sharesToMint);
@@ -223,6 +231,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         require(newFee <= MAX_FEE, Errors.InvalidFee());
         emit WithdrawFeeUpdated(feeOnWithdraw, newFee);
         feeOnWithdraw = newFee;
+    }
+
+    /// @inheritdoc IElitraVault
+    function setQueuedRedeemFee(uint256 newFee) external requiresAuth {
+        require(newFee <= MAX_FEE, Errors.InvalidFee());
+        emit QueuedRedeemFeeUpdated(feeOnQueuedRedeem, newFee);
+        feeOnQueuedRedeem = newFee;
     }
 
     /// @inheritdoc IElitraVault
@@ -445,9 +460,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         super._deposit(caller, receiver, assets, shares);
 
         // Accumulate fee (will be excluded from totalAssets via pendingFees)
-        if (feeAmount > 0) {
-            pendingFees += feeAmount;
-        }
+        pendingFees += feeAmount;
     }
 
     /// @dev Override to handle fee on withdraw (instant redemptions only)
@@ -465,9 +478,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         super._withdraw(caller, receiver, owner, assetsAfterFee, shares);
         
         // Accumulate fee (will be excluded from totalAssets via pendingFees)
-        if (feeAmount > 0) {
-            pendingFees += feeAmount;
-        }
+        pendingFees += feeAmount;
     }
 
     /// @dev Calculates the fees that should be added to an amount `assets` that does not already include fees.

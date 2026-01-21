@@ -26,6 +26,7 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     event NavFreshnessThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
     event DepositFeeUpdated(uint256 oldFee, uint256 newFee);
     event WithdrawFeeUpdated(uint256 oldFee, uint256 newFee);
+    event QueuedRedeemFeeUpdated(uint256 oldFee, uint256 newFee);
     event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
     event FeesClaimed(address indexed recipient, uint256 amount);
 
@@ -54,10 +55,12 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     // Fee management
     function feeOnDeposit() external view returns (uint256);
     function feeOnWithdraw() external view returns (uint256);
+    function feeOnQueuedRedeem() external view returns (uint256);
     function feeRecipient() external view returns (address);
     function pendingFees() external view returns (uint256);
     function setDepositFee(uint256 newFee) external;
     function setWithdrawFee(uint256 newFee) external;
+    function setQueuedRedeemFee(uint256 newFee) external;
     function setFeeRecipient(address newRecipient) external;
     function claimFees() external;
 }
