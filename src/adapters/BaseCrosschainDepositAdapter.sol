@@ -92,7 +92,7 @@ abstract contract BaseCrosschainDepositAdapter is
 
         // 3. Validate
         if (!supportedVaults[vault]) {
-            _handleDepositFailure(depositId, token, amount, abi.encodeWithSelector(VaultNotSupported.selector));
+            _handleDepositFailure(depositId, token, amount, abi.encodeWithSelector(VaultNotSupported.selector), minAmountOut, zapCalls);
             return;
         }
 
@@ -103,7 +103,7 @@ abstract contract BaseCrosschainDepositAdapter is
             emit DepositSuccess(depositId, receiver, vault, shares);
         } catch (bytes memory reason) {
             depositRecords[depositId].failureReason = reason;
-            _handleDepositFailure(depositId, token, amount, reason);
+            _handleDepositFailure(depositId, token, amount, reason, minAmountOut, zapCalls);
         }
     }
 
@@ -181,7 +181,14 @@ abstract contract BaseCrosschainDepositAdapter is
         depositRecords[depositId].status = newStatus;
     }
 
-    function _handleDepositFailure(uint256 depositId, address token, uint256 amount, bytes memory reason) internal {
+    function _handleDepositFailure(
+        uint256 depositId,
+        address token,
+        uint256 amount,
+        bytes memory reason,
+        uint256 minAmountOut,
+        Call[] memory zapCalls
+    ) internal {
         address user = depositRecords[depositId].user;
         
         if (depositQueue == address(0)) {
@@ -192,7 +199,7 @@ abstract contract BaseCrosschainDepositAdapter is
             return;
         }
 
-        try this._enqueueFailedDeposit(depositId, token, amount, reason) {
+        try this._enqueueFailedDeposit(depositId, token, amount, reason, minAmountOut, zapCalls) {
             _updateDepositStatus(depositId, DepositStatus.Queued);
             emit DepositQueued(depositId, user, reason);
         } catch {
@@ -203,7 +210,14 @@ abstract contract BaseCrosschainDepositAdapter is
         }
     }
 
-    function _enqueueFailedDeposit(uint256 depositId, address token, uint256 amount, bytes memory reason) external onlySelf {
+    function _enqueueFailedDeposit(
+        uint256 depositId,
+        address token,
+        uint256 amount,
+        bytes memory reason,
+        uint256 minAmountOut,
+        Call[] calldata zapCalls
+    ) external onlySelf {
         IERC20(token).forceApprove(depositQueue, amount);
 
         // get share price
@@ -217,7 +231,9 @@ abstract contract BaseCrosschainDepositAdapter is
             depositRecords[depositId].vault,
             depositRecords[depositId].guid,
             reason,
-            sharePrice
+            sharePrice,
+            minAmountOut,
+            zapCalls
         );
     }
 
