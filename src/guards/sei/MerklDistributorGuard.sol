@@ -2,24 +2,21 @@
 pragma solidity 0.8.28;
 
 import { ITransactionGuard } from "../../interfaces/ITransactionGuard.sol";
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title MerklDistributorGuard
 /// @author Elitra
 /// @notice Guard for Merkl distributor claim operations.
 /// @dev Restricts claims to this vault address.
-contract MerklDistributorGuard is ITransactionGuard, Ownable {
+contract MerklDistributorGuard is ITransactionGuard {
     /// @notice claim(address[] users,address[] tokens,uint256[] amounts,bytes32[][] proofs) selector
     bytes4 public constant CLAIM_SELECTOR = 0x71ee95c0;
 
     /// @notice Vault address that must appear in the `users` list
     address public immutable vault;
 
-    /// @notice Initializes the guard with the owner and vault
-    /// @param _owner The address of the owner
+    /// @notice Initializes the guard with the vault
     /// @param _vault The vault address that must be present in claim users
-    constructor(address _owner, address _vault) {
-        _transferOwnership(_owner);
+    constructor(address _vault) {
         vault = _vault;
     }
 

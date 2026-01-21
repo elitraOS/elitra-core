@@ -56,7 +56,6 @@ contract ZapExecutor {
 
         // Sweep tokens 
         sweepToken(tokenIn);
-        sweepToken(asset);
         sweepNative();
     }
 

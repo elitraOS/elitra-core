@@ -39,7 +39,7 @@ contract MorphoGuardForkTest is Test {
         // Get the owner from the deployed contract
         owner = vault.owner();
 
-        morphoGuard = new MorphoVaultGuard(owner, address(vault));
+        morphoGuard = new MorphoVaultGuard(address(vault));
 
         console.log("=== SEI Mainnet Fork Test Setup ===");
         console.log("Vault:", address(vault));

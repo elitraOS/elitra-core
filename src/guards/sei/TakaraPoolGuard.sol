@@ -2,24 +2,17 @@
 pragma solidity 0.8.28;
 
 import { ITransactionGuard } from "../../interfaces/ITransactionGuard.sol";
-import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 
 /// @title TakaraPoolGuard
 /// @author Elitra
 /// @notice Guard for Takara lending pool operations (mint/redeem).
 /// @dev Only allows mint and redeem function calls.
-contract TakaraPoolGuard is ITransactionGuard, Ownable {
+contract TakaraPoolGuard is ITransactionGuard {
     /// @notice mint(uint256) selector
     bytes4 public constant MINT_SELECTOR = 0xa0712d68;
 
     /// @notice redeem(uint256) selector
     bytes4 public constant REDEEM_SELECTOR = 0xdb006a75;
-
-    /// @notice Initializes the guard with the owner
-    /// @param _owner The address of the owner
-    constructor(address _owner) {
-        _transferOwnership(_owner);
-    }
 
     /// @inheritdoc ITransactionGuard
     function validate(address, bytes calldata data, uint256) external pure override returns (bool) {

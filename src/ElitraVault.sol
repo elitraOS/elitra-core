@@ -138,6 +138,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     function requestRedeem(uint256 shares, address receiver, address owner) public whenNotPaused returns (uint256) {
         require(shares > 0, Errors.SharesAmountZero());
         require(owner == msg.sender, Errors.NotSharesOwner());
+        require(receiver != address(0), Errors.ZeroAddress());
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
 
         uint256 assets = previewRedeem(shares);
@@ -213,7 +214,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         return (_pendingRedeem[user].assets, _pendingRedeem[user].shares);
     }
 
-    function manageBatch(Call[] calldata calls) public payable override(VaultBase, IVaultBase) requiresAuth {
+    function manageBatch(Call[] calldata calls) public payable override(VaultBase, IVaultBase) {
         // Get asset balance before execution
         uint256 beforeBalance = IERC20(asset()).balanceOf(address(this));
 
@@ -291,7 +292,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     )
         public
         override(ERC4626Upgradeable, IERC4626Upgradeable)
-        whenNotPaused
         returns (uint256)
     {
         return requestRedeem(shares, receiver, owner);

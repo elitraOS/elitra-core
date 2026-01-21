@@ -36,7 +36,7 @@ contract Deploy_MorphoGuards is Script {
 
         // Deploy MorphoVaultGuard
         console2.log("\nDeploying MorphoVaultGuard...");
-        MorphoVaultGuard morphoGuard = new MorphoVaultGuard(deployer, vaultAddress);
+        MorphoVaultGuard morphoGuard = new MorphoVaultGuard(vaultAddress);
         console2.log("MorphoVaultGuard:", address(morphoGuard));
 
         vm.stopBroadcast();

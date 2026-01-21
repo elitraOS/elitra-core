@@ -36,13 +36,13 @@ contract Deploy_TakaraGuards is Script {
 
         // Deploy TakaraPoolGuard for SEI pool
         console2.log("\nDeploying TakaraPoolGuard for SEI pool...");
-        TakaraPoolGuard poolGuard = new TakaraPoolGuard(deployer);
+        TakaraPoolGuard poolGuard = new TakaraPoolGuard();
         console2.log("TakaraPoolGuard:", address(poolGuard));
 
 
         // Deploy TakaraControllerGuard
         console2.log("\nDeploying TakaraControllerGuard...");
-        TakaraControllerGuard controllerGuard = new TakaraControllerGuard(deployer);
+        TakaraControllerGuard controllerGuard = new TakaraControllerGuard();
         console2.log("TakaraControllerGuard:", address(controllerGuard));
 
         vm.stopBroadcast();
