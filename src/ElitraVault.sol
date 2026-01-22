@@ -153,6 +153,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             return actualAssets;
         } else if (mode == RedemptionMode.QUEUED) {
             // Queue the redemption: burn shares and virtually remove assets from totalAssets
+            _requireFreshNav();
             _burn(owner, shares);
             totalPendingAssets += actualAssets;
 
