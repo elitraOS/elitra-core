@@ -79,15 +79,12 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     /// @notice Internal function to update vault balance and price per share
     /// @param newAggregatedBalance The new aggregated balance from external protocols
     function _updateBalance(uint256 newAggregatedBalance) internal {
-        // 1. Validate not already updated this block
-        require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
-
-        // 2. Pull validation from balance update hook (read-only)
+        // 1. Pull validation from balance update hook (read-only)
         (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
             lastPricePerShare, totalSupply(), IERC20(asset()).balanceOf(address(this)), newAggregatedBalance
         );
 
-        // 3. Check if should pause
+        // 2. Check if should pause
         if (!shouldContinue) {
             _pause();
             emit VaultPausedDueToThreshold(block.timestamp, lastPricePerShare, newPPS);
@@ -105,7 +102,12 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     }
 
     function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
+        // Validate not already updated this block
+        require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
+
         _updateBalance(newAggregatedBalance);
+
+        // Update last block updated and timestamp updated
         lastBlockUpdated = block.number;  // Only external syncs reset NAV freshness
         lastTimestampUpdated = block.timestamp;
     }
