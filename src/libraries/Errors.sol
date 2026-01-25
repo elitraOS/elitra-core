@@ -43,4 +43,7 @@ library Errors {
 
     /// @notice Thrown when the max percentage threshold is invalid
     error InvalidPercentageThreshold();
+
+    /// @notice Thrown when the fee exceeds the maximum allowed
+    error InvalidFee();
 }
