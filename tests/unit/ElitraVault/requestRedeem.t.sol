@@ -52,12 +52,10 @@ contract RequestRedeem_Test is ElitraVault_Base_Test {
         assertEq(result, 0); // REQUEST_ID
 
         // Check pending redemption
-        (uint256 pendingAssets, uint256 pendingShares) = vault.pendingRedeemRequest(alice);
-        assertEq(pendingShares, 500e6);
+        uint256 pendingAssets = vault.pendingRedeemRequest(alice);
         assertGt(pendingAssets, 0); // Assets calculated at redemption time
 
-        // Shares transferred to vault
-        assertEq(vault.balanceOf(address(vault)), 500e6);
+        // Shares burned, alice has remaining shares
         assertEq(vault.balanceOf(alice), 500e6);
     }
 }

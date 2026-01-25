@@ -154,13 +154,12 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             emit RedeemRequest(receiver, owner, actualAssets, shares, true);
             return actualAssets;
         } else if (mode == RedemptionMode.QUEUED) {
-            // Queue the redemption
-            _requireFreshNav(); // Queued redemptions require fresh NAV
-            _transfer(owner, address(this), shares);
+            // Queue the redemption: burn shares and virtually remove assets from totalAssets
+            _requireFreshNav();
+            _burn(owner, shares);
             totalPendingAssets += actualAssets;
 
             PendingRedeem storage pending = _pendingRedeem[receiver];
-            pending.shares += shares;
             pending.assets += actualAssets;
 
             emit RedeemRequest(receiver, owner, actualAssets, shares, false);
@@ -171,31 +170,31 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     }
 
     /// @inheritdoc IElitraVault
-    function fulfillRedeem(address receiver, uint256 shares, uint256 assets) external requiresAuth {
+    function fulfillRedeem(address receiver, uint256 assets) external requiresAuth {
         PendingRedeem storage pending = _pendingRedeem[receiver];
-        require(pending.shares != 0 && shares <= pending.shares, Errors.InvalidSharesAmount());
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
-        pending.shares -= shares;
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
-        emit RequestFulfilled(receiver, shares, assets);
-        _withdraw(address(this), receiver, address(this), assets, shares);
+        emit RequestFulfilled(receiver, assets);
+        // Shares already burned at request time, just transfer assets
+        IERC20(asset()).safeTransfer(receiver, assets);
     }
 
     /// @inheritdoc IElitraVault
-    function cancelRedeem(address receiver, uint256 shares, uint256 assets) external requiresAuth {
+    function cancelRedeem(address receiver, uint256 assets) external requiresAuth {
         PendingRedeem storage pending = _pendingRedeem[receiver];
-        require(pending.shares != 0 && shares <= pending.shares, Errors.InvalidSharesAmount());
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
-        pending.shares -= shares;
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
-        emit RequestCancelled(receiver, shares, assets);
-        _transfer(address(this), receiver, shares);
+        // Mint shares based on current price to avoid price distortion
+        uint256 sharesToMint = previewDeposit(assets);
+
+        emit RequestCancelled(receiver, assets, sharesToMint);
+        _mint(receiver, sharesToMint);
     }
 
     /// @inheritdoc IElitraVault
@@ -212,8 +211,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     }
 
     /// @inheritdoc IElitraVault
-    function pendingRedeemRequest(address user) public view returns (uint256 assets, uint256 pendingShares) {
-        return (_pendingRedeem[user].assets, _pendingRedeem[user].shares);
+    function pendingRedeemRequest(address user) public view returns (uint256 assets) {
+        return _pendingRedeem[user].assets;
     }
 
     function manageBatch(Call[] calldata calls) public payable override(VaultBase, IVaultBase) {
@@ -245,7 +244,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     // ========================================= ERC4626 OVERRIDES =========================================
 
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
-        return IERC20(asset()).balanceOf(address(this)) + aggregatedUnderlyingBalances;
+        // Subtract totalPendingAssets to virtually remove queued redemption assets from share price calculation
+        uint256 total = IERC20(asset()).balanceOf(address(this)) + aggregatedUnderlyingBalances;
+        return total > totalPendingAssets ? total - totalPendingAssets : 0;
     }
 
     function deposit(

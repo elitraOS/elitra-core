@@ -38,7 +38,7 @@ contract FulfillRedeem_Test is ElitraVault_Base_Test {
 
     function test_FulfillRedeem_TransfersAssets() public {
         // Get actual pending values
-        (uint256 pendingAssets, uint256 pendingShares) = vault.pendingRedeemRequest(alice);
+        uint256 pendingAssets = vault.pendingRedeemRequest(alice);
 
         // Simulate strategy returning funds
         address strategy = makeAddr("strategy");
@@ -48,28 +48,27 @@ contract FulfillRedeem_Test is ElitraVault_Base_Test {
         uint256 aliceBalanceBefore = asset.balanceOf(alice);
 
         vm.prank(owner);
-        vault.fulfillRedeem(alice, pendingShares, pendingAssets);
+        vault.fulfillRedeem(alice, pendingAssets);
 
         assertEq(asset.balanceOf(alice), aliceBalanceBefore + pendingAssets);
 
         // Pending redemption cleared
-        (uint256 newPendingAssets, uint256 newPendingShares) = vault.pendingRedeemRequest(alice);
+        uint256 newPendingAssets = vault.pendingRedeemRequest(alice);
         assertEq(newPendingAssets, 0);
-        assertEq(newPendingShares, 0);
     }
 
     function test_FulfillRedeem_EmitsEvent() public {
         // Get actual pending values
-        (uint256 pendingAssets, uint256 pendingShares) = vault.pendingRedeemRequest(alice);
+        uint256 pendingAssets = vault.pendingRedeemRequest(alice);
 
         address strategy = makeAddr("strategy");
         vm.prank(strategy);
         asset.transfer(address(vault), pendingAssets);
 
         vm.expectEmit(true, true, true, true);
-        emit IElitraVault.RequestFulfilled(alice, pendingShares, pendingAssets);
+        emit IElitraVault.RequestFulfilled(alice, pendingAssets);
 
         vm.prank(owner);
-        vault.fulfillRedeem(alice, pendingShares, pendingAssets);
+        vault.fulfillRedeem(alice, pendingAssets);
     }
 }
