@@ -9,6 +9,7 @@ import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
 import { VaultBase } from "./vault/VaultBase.sol";
+import { FeeManager } from "./fees/FeeManager.sol";
 
 import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
@@ -20,7 +21,7 @@ import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfa
 
 /// @title ElitraVault - Vault with pluggable oracle and redemption adapters
 /// @notice ERC-4626 vault that delegates validation logic to adapters
-contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
+contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault {
     using Math for uint256;
     using Address for address;
     using SafeERC20 for IERC20;
@@ -63,6 +64,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     function initialize(
         IERC20 _asset,
         address _owner,
+        address _upgradeAdmin,
+        address _feeRegistry,
         IBalanceUpdateHook _balanceUpdateHook,
         IRedemptionHook _redemptionHook,
         string memory _name,
@@ -74,7 +77,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         __Context_init();
         __ERC20_init(_name, _symbol);
         __ERC4626_init(IERC20Upgradeable(address(_asset)));
-        __VaultBase_init(_owner);
+        __VaultBase_init(_owner, _upgradeAdmin);
+
+        // FeeManager (Lagoon-inspired): initialize with safe defaults (0 fees) and receivers set to owner.
+        __FeeManager_init(_owner, _owner, _feeRegistry, 0, 0, 0, 0);
 
         require(address(_balanceUpdateHook) != address(0), Errors.ZeroAddress());
         require(address(_redemptionHook) != address(0), Errors.ZeroAddress());
@@ -135,6 +141,34 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         navFreshnessThreshold = newThreshold;
     }
 
+    // ========================================= FEES (Lagoon-inspired) =========================================
+
+    /// @notice Take management/performance fees by minting shares to fee receivers.
+    /// @dev Manual hook for now (does not auto-accrue on deposit/withdraw/updateBalance).
+    function takeFees() external requiresAuth {
+        _takeFees();
+    }
+
+    /// @notice Update fee rates (applied after cooldown)
+    function updateFeeRates(uint16 managementRateBps, uint16 performanceRateBps) external requiresAuth {
+        _updateRates(Rates({ managementRate: managementRateBps, performanceRate: performanceRateBps }));
+    }
+
+    /// @notice Set fee receivers
+    function setFeeReceivers(address feeReceiver, address protocolFeeReceiver) external requiresAuth {
+        _setFeeReceivers(feeReceiver, protocolFeeReceiver);
+    }
+
+    /// @notice Set protocol fee cut (bps of total fee shares)
+    function setProtocolRateBps(uint16 newRateBps) external requiresAuth {
+        _setProtocolRateBps(newRateBps);
+    }
+
+    /// @notice Set the fee registry used for protocol fee rate lookup
+    function setFeeRegistry(address newRegistry) external requiresAuth {
+        _setFeeRegistry(newRegistry);
+    }
+
     /// @notice Check if NAV is fresh (updated within threshold)
     /// @dev Reverts if navFreshnessThreshold > 0 and NAV is stale
     function _requireFreshNav() internal view {
@@ -186,6 +220,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
 
     /// @inheritdoc IElitraVault
     function fulfillRedeem(address receiver, uint256 assets) external requiresAuth {
+        // Take fees on every withdrawal (queued redemption fulfillment transfers assets out)
+        _takeFees();
+
         PendingRedeem storage pending = _pendingRedeem[receiver];
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
@@ -361,6 +398,19 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         returns (uint256)
     {
         return requestRedeem(shares, receiver, owner);
+    }
+
+    /// @dev Hook fee-taking into the instant withdraw path (RedemptionMode.INSTANT calls _withdraw)
+    function _withdraw(
+        address caller,
+        address receiver,
+        address owner,
+        uint256 assets,
+        uint256 shares
+    ) internal override {
+        // Take fees on every withdrawal
+        _takeFees();
+        super._withdraw(caller, receiver, owner, assets, shares);
     }
 
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal override whenNotPaused {

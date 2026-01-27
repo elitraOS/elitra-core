@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
+import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IERC20Metadata } from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -12,7 +13,7 @@ import { IRedemptionHook } from "./interfaces/IRedemptionHook.sol";
 
 /// @title ElitraVaultFactory
 /// @notice Deploys ElitraVault proxies deterministically (CREATE2) and seeds them in a single tx.
-contract ElitraVaultFactory {
+contract ElitraVaultFactory is Ownable {
     using SafeERC20 for IERC20;
 
     /// @notice Bootstrap amount for dead shares to prevent inflation attacks.
@@ -40,14 +41,16 @@ contract ElitraVaultFactory {
         address seedReceiver
     );
 
-    constructor(address _implementation) {
+    constructor(address _implementation) Ownable(msg.sender) {
         require(_implementation != address(0), "impl zero");
         implementation = _implementation;
     }
 
     /// @notice Deploy a vault proxy via CREATE2 and seed an initial deposit to set PPS.
+    /// @dev Upgrade admin is set to the factory owner at deployment time.
     /// @param asset Underlying ERC20 asset.
     /// @param owner Vault owner/admin.
+    /// @param feeRegistry Fee registry for protocol fee rate.
     /// @param balanceHook Balance update hook.
     /// @param redemptionHook Redemption hook.
     /// @param name Vault token name.
@@ -58,6 +61,7 @@ contract ElitraVaultFactory {
     function deployAndSeed(
         IERC20 asset,
         address owner,
+        address feeRegistry,
         IBalanceUpdateHook balanceHook,
         IRedemptionHook redemptionHook,
         string memory name,
@@ -81,6 +85,8 @@ contract ElitraVaultFactory {
             ElitraVault.initialize.selector,
             asset,
             owner,
+            owner(),
+            feeRegistry,
             balanceHook,
             redemptionHook,
             name,
@@ -142,4 +148,3 @@ contract ElitraVaultFactory {
     }
 
 }
-
