@@ -29,6 +29,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     uint256 internal constant DENOMINATOR = 1e18;
     /// @dev Redemption request ID (always 0 for non-fungible requests)
     uint256 internal constant REQUEST_ID = 0;
+    /// @dev The maximum fee that can be set for the vault operations. 1e16 = 1%
+    uint256 internal constant MAX_FEE = 1e16;
 
     // Oracle state
     IBalanceUpdateHook public balanceUpdateHook;
@@ -44,6 +46,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     IRedemptionHook public redemptionHook;
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
     uint256 public totalPendingAssets;
+
+    // Fee state
+    uint256 public feeOnDeposit;
+    uint256 public feeOnWithdraw; // fee on instant withdrawals
+    uint256 public feeOnQueuedRedeem; // fee on queued redemptions
+    address public feeRecipient;
+    uint256 public pendingFees; // Accumulated fees waiting to be claimed
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -157,12 +166,18 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
             // Queue the redemption: burn shares and virtually remove assets from totalAssets
             _requireFreshNav();
             _burn(owner, shares);
-            totalPendingAssets += actualAssets;
+            
+            // Calculate and accumulate queued redeem fee
+            uint256 feeAmount = _feeOnTotal(actualAssets, feeOnQueuedRedeem);
+            uint256 assetsAfterFee = actualAssets - feeAmount;
+            pendingFees += feeAmount;
+            
+            totalPendingAssets += assetsAfterFee;
 
             PendingRedeem storage pending = _pendingRedeem[receiver];
-            pending.assets += actualAssets;
+            pending.assets += assetsAfterFee;
 
-            emit RedeemRequest(receiver, owner, actualAssets, shares, false);
+            emit RedeemRequest(receiver, owner, assetsAfterFee, shares, false);
             return REQUEST_ID;
         } else {
             revert Errors.InvalidRedemptionMode();
@@ -191,7 +206,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         totalPendingAssets -= assets;
 
         // Mint shares based on current price to avoid price distortion
-        uint256 sharesToMint = previewDeposit(assets);
+        // Use super.previewDeposit to bypass fee - cancel should not charge fee
+        uint256 sharesToMint = super.previewDeposit(assets);
 
         emit RequestCancelled(receiver, assets, sharesToMint);
         _mint(receiver, sharesToMint);
@@ -202,6 +218,49 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         require(address(newStrategy) != address(0), Errors.ZeroAddress());
         emit RedemptionHookUpdated(address(redemptionHook), address(newStrategy));
         redemptionHook = newStrategy;
+    }
+
+    // ========================================= FEE MANAGEMENT =========================================
+
+    /// @inheritdoc IElitraVault
+    function setDepositFee(uint256 newFee) external requiresAuth {
+        require(newFee <= MAX_FEE, Errors.InvalidFee());
+        emit DepositFeeUpdated(feeOnDeposit, newFee);
+        feeOnDeposit = newFee;
+    }
+
+    /// @inheritdoc IElitraVault
+    function setWithdrawFee(uint256 newFee) external requiresAuth {
+        require(newFee <= MAX_FEE, Errors.InvalidFee());
+        emit WithdrawFeeUpdated(feeOnWithdraw, newFee);
+        feeOnWithdraw = newFee;
+    }
+
+    /// @inheritdoc IElitraVault
+    function setQueuedRedeemFee(uint256 newFee) external requiresAuth {
+        require(newFee <= MAX_FEE, Errors.InvalidFee());
+        emit QueuedRedeemFeeUpdated(feeOnQueuedRedeem, newFee);
+        feeOnQueuedRedeem = newFee;
+    }
+
+    /// @inheritdoc IElitraVault
+    function setFeeRecipient(address newRecipient) external requiresAuth {
+        emit FeeRecipientUpdated(feeRecipient, newRecipient);
+        feeRecipient = newRecipient;
+    }
+
+    /// @inheritdoc IElitraVault
+    function claimFees() external requiresAuth {
+        uint256 fees = pendingFees;
+        require(fees > 0, Errors.InvalidAssetsAmount());
+        
+        address recipient = feeRecipient;
+        require(recipient != address(0), Errors.ZeroAddress());
+        
+        pendingFees = 0;
+        
+        emit FeesClaimed(recipient, fees);
+        IERC20(asset()).safeTransfer(recipient, fees);
     }
 
     /// @inheritdoc IElitraVault
@@ -244,9 +303,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     // ========================================= ERC4626 OVERRIDES =========================================
 
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
-        // Subtract totalPendingAssets to virtually remove queued redemption assets from share price calculation
-        uint256 total = IERC20(asset()).balanceOf(address(this)) + aggregatedUnderlyingBalances;
-        return total > totalPendingAssets ? total - totalPendingAssets : 0;
+        uint256 vaultBalance = IERC20(asset()).balanceOf(address(this));
+        uint256 total = vaultBalance + aggregatedUnderlyingBalances;
+        // Exclude both:
+        // 1. totalPendingAssets - assets reserved for queued redemptions (belong to redeemers)
+        // 2. pendingFees - accumulated fees (belong to fee recipient)
+        uint256 excluded = totalPendingAssets + pendingFees;
+        return total > excluded ? total - excluded : 0;
     }
 
     function deposit(
@@ -334,6 +397,50 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
         return super.maxRedeem(owner);
     }
 
+    /// @dev Preview taking an entry fee on deposit. See {IERC4626-previewDeposit}.
+    function previewDeposit(uint256 assets)
+        public
+        view
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
+        returns (uint256)
+    {
+        uint256 fee = _feeOnTotal(assets, feeOnDeposit);
+        return super.previewDeposit(assets - fee);
+    }
+
+    /// @dev Preview adding an entry fee on mint. See {IERC4626-previewMint}.
+    function previewMint(uint256 shares)
+        public
+        view
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
+        returns (uint256)
+    {
+        uint256 assets = super.previewMint(shares);
+        return assets + _feeOnRaw(assets, feeOnDeposit);
+    }
+
+    /// @dev Preview adding an exit fee on withdraw. See {IERC4626-previewWithdraw}.
+    function previewWithdraw(uint256 assets)
+        public
+        view
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
+        returns (uint256)
+    {
+        uint256 fee = _feeOnRaw(assets, feeOnWithdraw);
+        return super.previewWithdraw(assets + fee);
+    }
+
+    /// @dev Preview taking an exit fee on redeem. See {IERC4626-previewRedeem}.
+    function previewRedeem(uint256 shares)
+        public
+        view
+        override(ERC4626Upgradeable, IERC4626Upgradeable)
+        returns (uint256)
+    {
+        uint256 assets = super.previewRedeem(shares);
+        return assets - _feeOnTotal(assets, feeOnWithdraw);
+    }
+
     /// @inheritdoc IVaultBase
     function pause() public override(VaultBase, IVaultBase) requiresAuth {
         _pause();
@@ -345,4 +452,47 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, IElitraVault {
     }
 
     function _authorizeUpgrade(address newImplementation) internal override requiresAuth {}
+
+    // ========================================= FEE INTERNAL FUNCTIONS =========================================
+
+    /// @dev Override to handle fee on deposit
+    /// @notice Fee is accumulated in pendingFees and excluded from totalAssets
+    function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
+        uint256 feeAmount = _feeOnTotal(assets, feeOnDeposit);
+        
+        super._deposit(caller, receiver, assets, shares);
+
+        // Accumulate fee (will be excluded from totalAssets via pendingFees)
+        pendingFees += feeAmount;
+    }
+
+    /// @dev Override to handle fee on withdraw (instant redemptions only)
+    /// @notice Fee is accumulated in pendingFees
+    function _withdraw(
+        address caller,
+        address receiver,
+        address owner,
+        uint256 assets,
+        uint256 shares
+    ) internal override {
+        uint256 feeAmount = _feeOnTotal(assets, feeOnWithdraw);
+        uint256 assetsAfterFee = assets - feeAmount;
+        
+        super._withdraw(caller, receiver, owner, assetsAfterFee, shares);
+        
+        // Accumulate fee (will be excluded from totalAssets via pendingFees)
+        pendingFees += feeAmount;
+    }
+
+    /// @dev Calculates the fees that should be added to an amount `assets` that does not already include fees.
+    /// Used in {IERC4626-mint} and {IERC4626-withdraw} operations.
+    function _feeOnRaw(uint256 assets, uint256 feeBasisPoints) internal pure returns (uint256) {
+        return assets.mulDiv(feeBasisPoints, DENOMINATOR, Math.Rounding.Up);
+    }
+
+    /// @dev Calculates the fee part of an amount `assets` that already includes fees.
+    /// Used in {IERC4626-deposit} and {IERC4626-redeem} operations.
+    function _feeOnTotal(uint256 assets, uint256 feeBasisPoints) internal pure returns (uint256) {
+        return assets.mulDiv(feeBasisPoints, feeBasisPoints + DENOMINATOR, Math.Rounding.Up);
+    }
 }
