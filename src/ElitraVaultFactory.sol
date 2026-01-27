@@ -41,7 +41,8 @@ contract ElitraVaultFactory is Ownable {
         address seedReceiver
     );
 
-    constructor(address _implementation) Ownable(msg.sender) {
+    constructor(address _implementation) {
+        _transferOwnership(msg.sender);
         require(_implementation != address(0), "impl zero");
         implementation = _implementation;
     }
@@ -85,7 +86,7 @@ contract ElitraVaultFactory is Ownable {
             ElitraVault.initialize.selector,
             asset,
             owner,
-            owner(),
+            Ownable.owner(),
             feeRegistry,
             balanceHook,
             redemptionHook,

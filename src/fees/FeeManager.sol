@@ -3,7 +3,20 @@ pragma solidity 0.8.28;
 
 import { MathUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/math/MathUpgradeable.sol";
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { IFeeRegistry } from "../interfaces/IFeeRegistry.sol";
+import { Errors } from "../libraries/Errors.sol";
+
+/// @title IFeeManager
+/// @notice Minimal interface for fee-related view functions
+interface IFeeManager {
+    function feeOnDeposit() external view returns (uint256);
+    function feeOnWithdraw() external view returns (uint256);
+    function feeOnQueuedRedeem() external view returns (uint256);
+    function feeRecipient() external view returns (address);
+    function pendingFees() external view returns (uint256);
+}
 
 /**
  * @title FeeManager (Lagoon-inspired)
@@ -16,15 +29,18 @@ import { IFeeRegistry } from "../interfaces/IFeeRegistry.sol";
  * - Optional protocol fee cut (bps) and separate fee receivers
  * - ERC-7201 style namespaced storage slot to avoid upgradeable storage collisions
  */
-abstract contract FeeManager is ERC4626Upgradeable {
+abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
     using MathUpgradeable for uint256;
+    using SafeERC20 for IERC20;
 
     uint256 internal constant ONE_YEAR = 365 days;
     uint256 internal constant BPS_DIVIDER = 10_000; // 100%
+    uint256 internal constant DENOMINATOR = 1e18; // 100%
 
     uint16 public constant MAX_MANAGEMENT_RATE = 1000; // 10%
     uint16 public constant MAX_PERFORMANCE_RATE = 5000; // 50%
     uint16 public constant MAX_PROTOCOL_RATE = 3000; // 30%
+    uint256 internal constant MAX_FEE = 1e16; // 1%
 
     error AboveMaxRate(uint256 max);
     error ZeroAddress();
@@ -56,6 +72,12 @@ abstract contract FeeManager is ERC4626Upgradeable {
         Rates oldRates;
 
         address feeRegistry;
+        uint256 feeOnDeposit;
+        uint256 feeOnWithdraw;
+        uint256 feeOnQueuedRedeem;
+        address feeRecipient;
+        uint256 pendingFees;
+        uint256 pendingProtocolFees;
     }
 
     // keccak256(abi.encode(uint256(keccak256("elitra.storage.feeManager")) - 1)) & ~bytes32(uint256(0xff))
@@ -90,6 +112,7 @@ abstract contract FeeManager is ERC4626Upgradeable {
         $.protocolFeeReceiver = _protocolFeeReceiver;
         $.protocolRateBps = _protocolRateBps;
         $.feeRegistry = _feeRegistry;
+        $.feeRecipient = _feeReceiver;
 
         $.cooldown = _cooldown;
         $.newRatesTimestamp = block.timestamp;
@@ -111,7 +134,32 @@ abstract contract FeeManager is ERC4626Upgradeable {
 
     function feeReceivers() public view returns (address feeReceiver, address protocolFeeReceiver) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
-        return ($.feeReceiver, $.protocolFeeReceiver);
+        return ($.feeReceiver, _protocolFeeReceiver());
+    }
+
+    function feeOnDeposit() public virtual view returns (uint256) {
+        return _getFeeManagerStorage().feeOnDeposit;
+    }
+
+    function feeOnWithdraw() public virtual view returns (uint256) {
+        return _getFeeManagerStorage().feeOnWithdraw;
+    }
+
+    function feeOnQueuedRedeem() public virtual view returns (uint256) {
+        return _getFeeManagerStorage().feeOnQueuedRedeem;
+    }
+
+    function feeRecipient() public virtual view returns (address) {
+        return _getFeeManagerStorage().feeRecipient;
+    }
+
+    function pendingFees() public virtual view returns (uint256) {
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        return $.pendingFees + $.pendingProtocolFees;
+    }
+
+    function pendingProtocolFees() public view returns (uint256) {
+        return _getFeeManagerStorage().pendingProtocolFees;
     }
 
     function protocolRateBps() public view returns (uint16) {
@@ -171,6 +219,72 @@ abstract contract FeeManager is ERC4626Upgradeable {
         emit ProtocolRateUpdated(old, newRateBps);
     }
 
+    function _setDepositFee(uint256 newFee) internal returns (uint256 oldFee) {
+        if (newFee > MAX_FEE) revert Errors.InvalidFee();
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        oldFee = $.feeOnDeposit;
+        $.feeOnDeposit = newFee;
+    }
+
+    function _setWithdrawFee(uint256 newFee) internal returns (uint256 oldFee) {
+        if (newFee > MAX_FEE) revert Errors.InvalidFee();
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        oldFee = $.feeOnWithdraw;
+        $.feeOnWithdraw = newFee;
+    }
+
+    function _setQueuedRedeemFee(uint256 newFee) internal returns (uint256 oldFee) {
+        if (newFee > MAX_FEE) revert Errors.InvalidFee();
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        oldFee = $.feeOnQueuedRedeem;
+        $.feeOnQueuedRedeem = newFee;
+    }
+
+    function _setFeeRecipient(address newRecipient) internal returns (address oldRecipient) {
+        if (newRecipient == address(0)) revert ZeroAddress();
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        oldRecipient = $.feeRecipient;
+        $.feeRecipient = newRecipient;
+    }
+
+    function _addPendingFees(uint256 amount) internal {
+        if (amount == 0) return;
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        uint256 protocolCut = amount.mulDiv(uint256(_protocolRate()), BPS_DIVIDER, MathUpgradeable.Rounding.Up);
+        $.pendingProtocolFees += protocolCut;
+        $.pendingFees += amount - protocolCut;
+    }
+
+    function _clearPendingFees() internal returns (uint256 fees) {
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        fees = $.pendingFees;
+        $.pendingFees = 0;
+    }
+
+    function _claimManagerFees() internal returns (address recipient, uint256 fees) {
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        fees = $.pendingFees;
+        if (fees == 0) revert Errors.InvalidAssetsAmount();
+
+        recipient = $.feeRecipient;
+        if (recipient == address(0)) revert ZeroAddress();
+
+        $.pendingFees = 0;
+        IERC20(asset()).safeTransfer(recipient, fees);
+    }
+
+    function _claimProtocolFees() internal returns (address recipient, uint256 fees) {
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        fees = $.pendingProtocolFees;
+        if (fees == 0) revert Errors.InvalidAssetsAmount();
+
+        recipient = _protocolFeeReceiver();
+        if (recipient == address(0)) revert ZeroAddress();
+
+        $.pendingProtocolFees = 0;
+        IERC20(asset()).safeTransfer(recipient, fees);
+    }
+
     function _setFeeRegistry(address newRegistry) internal {
         if (newRegistry == address(0)) revert ZeroAddress();
         FeeManagerStorage storage $ = _getFeeManagerStorage();
@@ -198,7 +312,7 @@ abstract contract FeeManager is ERC4626Upgradeable {
         if (managerShares > 0) {
             _mint($.feeReceiver, managerShares);
             if (protocolShares > 0) {
-                _mint($.protocolFeeReceiver, protocolShares);
+                _mint(_protocolFeeReceiver(), protocolShares);
             }
         }
 
@@ -241,7 +355,7 @@ abstract contract FeeManager is ERC4626Upgradeable {
         uint256 totalFeesAssets = managementFees + performanceFees;
         if (totalFeesAssets == 0) return (0, 0);
 
-        // Convert fee assets to shares to mint (dilution compensation)
+        // Solve for x: x / (totalSupply + x) = totalFeesAssets / assetsUnderMgmt.
         uint256 totalSharesToMint = totalFeesAssets.mulDiv(
             totalSupply() + 10 ** _decimalsOffset(),
             (assetsUnderMgmt - totalFeesAssets) + 1,
@@ -287,4 +401,25 @@ abstract contract FeeManager is ERC4626Upgradeable {
         uint16 registryRate = IFeeRegistry($.feeRegistry).protocolFeeRateBps();
         return registryRate > MAX_PROTOCOL_RATE ? MAX_PROTOCOL_RATE : registryRate;
     }
+
+    function _protocolFeeReceiver() internal view returns (address) {
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        if ($.feeRegistry == address(0)) return $.protocolFeeReceiver;
+        address registryReceiver = IFeeRegistry($.feeRegistry).protocolFeeReceiver();
+        return registryReceiver == address(0) ? $.protocolFeeReceiver : registryReceiver;
+    }
+
+    function _feeOnRaw(uint256 assets, uint256 feeRate) internal pure returns (uint256) {
+        return assets.mulDiv(feeRate, DENOMINATOR, MathUpgradeable.Rounding.Up);
+    }
+
+    function _feeOnTotal(uint256 assets, uint256 feeRate) internal pure returns (uint256) {
+        return assets.mulDiv(feeRate, feeRate + DENOMINATOR, MathUpgradeable.Rounding.Up);
+    }
+
+    function _feeConfig() internal view returns (uint256 depositFee, uint256 withdrawFee, uint256 queuedRedeemFee, uint256) {
+        FeeManagerStorage storage $ = _getFeeManagerStorage();
+        return ($.feeOnDeposit, $.feeOnWithdraw, $.feeOnQueuedRedeem, 0);
+    }
+
 }

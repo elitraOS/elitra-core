@@ -11,7 +11,6 @@ import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.so
 import { VaultBase } from "./vault/VaultBase.sol";
 import { FeeManager } from "./fees/FeeManager.sol";
 
-import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -22,16 +21,11 @@ import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfa
 /// @title ElitraVault - Vault with pluggable oracle and redemption adapters
 /// @notice ERC-4626 vault that delegates validation logic to adapters
 contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault {
-    using Math for uint256;
     using Address for address;
     using SafeERC20 for IERC20;
 
-    /// @dev The denominator used for precision calculations
-    uint256 internal constant DENOMINATOR = 1e18;
     /// @dev Redemption request ID (always 0 for non-fungible requests)
     uint256 internal constant REQUEST_ID = 0;
-    /// @dev The maximum fee that can be set for the vault operations. 1e16 = 1%
-    uint256 internal constant MAX_FEE = 1e16;
 
     // Oracle state
     IBalanceUpdateHook public balanceUpdateHook;
@@ -48,12 +42,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
     uint256 public totalPendingAssets;
 
-    // Fee state
-    uint256 public feeOnDeposit;
-    uint256 public feeOnWithdraw; // fee on instant withdrawals
-    uint256 public feeOnQueuedRedeem; // fee on queued redemptions
-    address public feeRecipient;
-    uint256 public pendingFees; // Accumulated fees waiting to be claimed
+    // Fee state (moved to FeeManager storage)
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -185,6 +174,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         require(owner == msg.sender, Errors.NotSharesOwner());
         require(receiver != address(0), Errors.ZeroAddress());
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
+        
+        _takeFees();  // Take fees before redeeming
 
         uint256 assets = previewRedeem(shares);
 
@@ -202,9 +193,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
             _burn(owner, shares);
             
             // Calculate and accumulate queued redeem fee
-            uint256 feeAmount = _feeOnTotal(actualAssets, feeOnQueuedRedeem);
+            (, , uint256 queuedFee, ) = _feeConfig();
+            uint256 feeAmount = _feeOnTotal(actualAssets, queuedFee);
             uint256 assetsAfterFee = actualAssets - feeAmount;
-            pendingFees += feeAmount;
+            _addPendingFees(feeAmount);
             
             totalPendingAssets += assetsAfterFee;
 
@@ -236,6 +228,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function cancelRedeem(address receiver, uint256 assets) external requiresAuth {
+        _takeFees(); // Take fees before canceling redeem
+
         PendingRedeem storage pending = _pendingRedeem[receiver];
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
@@ -261,43 +255,37 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function setDepositFee(uint256 newFee) external requiresAuth {
-        require(newFee <= MAX_FEE, Errors.InvalidFee());
-        emit DepositFeeUpdated(feeOnDeposit, newFee);
-        feeOnDeposit = newFee;
+        uint256 oldFee = _setDepositFee(newFee);
+        emit DepositFeeUpdated(oldFee, newFee);
     }
 
     /// @inheritdoc IElitraVault
     function setWithdrawFee(uint256 newFee) external requiresAuth {
-        require(newFee <= MAX_FEE, Errors.InvalidFee());
-        emit WithdrawFeeUpdated(feeOnWithdraw, newFee);
-        feeOnWithdraw = newFee;
+        uint256 oldFee = _setWithdrawFee(newFee);
+        emit WithdrawFeeUpdated(oldFee, newFee);
     }
 
     /// @inheritdoc IElitraVault
     function setQueuedRedeemFee(uint256 newFee) external requiresAuth {
-        require(newFee <= MAX_FEE, Errors.InvalidFee());
-        emit QueuedRedeemFeeUpdated(feeOnQueuedRedeem, newFee);
-        feeOnQueuedRedeem = newFee;
+        uint256 oldFee = _setQueuedRedeemFee(newFee);
+        emit QueuedRedeemFeeUpdated(oldFee, newFee);
     }
 
     /// @inheritdoc IElitraVault
     function setFeeRecipient(address newRecipient) external requiresAuth {
-        emit FeeRecipientUpdated(feeRecipient, newRecipient);
-        feeRecipient = newRecipient;
+        address oldRecipient = _setFeeRecipient(newRecipient);
+        emit FeeRecipientUpdated(oldRecipient, newRecipient);
     }
 
     /// @inheritdoc IElitraVault
     function claimFees() external requiresAuth {
-        uint256 fees = pendingFees;
-        require(fees > 0, Errors.InvalidAssetsAmount());
-        
-        address recipient = feeRecipient;
-        require(recipient != address(0), Errors.ZeroAddress());
-        
-        pendingFees = 0;
-        
+        (address recipient, uint256 fees) = _claimManagerFees();
         emit FeesClaimed(recipient, fees);
-        IERC20(asset()).safeTransfer(recipient, fees);
+    }
+
+    function claimProtocolFees() external requiresAuth {
+        (address recipient, uint256 fees) = _claimProtocolFees();
+        emit FeesClaimed(recipient, fees);
     }
 
     /// @inheritdoc IElitraVault
@@ -345,7 +333,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         // Exclude both:
         // 1. totalPendingAssets - assets reserved for queued redemptions (belong to redeemers)
         // 2. pendingFees - accumulated fees (belong to fee recipient)
-        uint256 excluded = totalPendingAssets + pendingFees;
+        uint256 excluded = totalPendingAssets + pendingFees();
         return total > excluded ? total - excluded : 0;
     }
 
@@ -359,6 +347,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         returns (uint256)
     {
         _requireFreshNav();
+        _takeFees();
         return super.deposit(assets, receiver);
     }
 
@@ -372,6 +361,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         returns (uint256)
     {
         _requireFreshNav();
+        _takeFees();
         return super.mint(shares, receiver);
     }
 
@@ -398,19 +388,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         returns (uint256)
     {
         return requestRedeem(shares, receiver, owner);
-    }
-
-    /// @dev Hook fee-taking into the instant withdraw path (RedemptionMode.INSTANT calls _withdraw)
-    function _withdraw(
-        address caller,
-        address receiver,
-        address owner,
-        uint256 assets,
-        uint256 shares
-    ) internal override {
-        // Take fees on every withdrawal
-        _takeFees();
-        super._withdraw(caller, receiver, owner, assets, shares);
     }
 
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal override whenNotPaused {
@@ -454,7 +431,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
-        uint256 fee = _feeOnTotal(assets, feeOnDeposit);
+        (uint256 depositFee, , , ) = _feeConfig();
+        uint256 fee = _feeOnTotal(assets, depositFee);
         return super.previewDeposit(assets - fee);
     }
 
@@ -466,7 +444,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         returns (uint256)
     {
         uint256 assets = super.previewMint(shares);
-        return assets + _feeOnRaw(assets, feeOnDeposit);
+        (uint256 depositFee, , , ) = _feeConfig();
+        return assets + _feeOnRaw(assets, depositFee);
     }
 
     /// @dev Preview adding an exit fee on withdraw. See {IERC4626-previewWithdraw}.
@@ -476,7 +455,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
-        uint256 fee = _feeOnRaw(assets, feeOnWithdraw);
+        (, uint256 withdrawFee, , ) = _feeConfig();
+        uint256 fee = _feeOnRaw(assets, withdrawFee);
         return super.previewWithdraw(assets + fee);
     }
 
@@ -488,7 +468,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         returns (uint256)
     {
         uint256 assets = super.previewRedeem(shares);
-        return assets - _feeOnTotal(assets, feeOnWithdraw);
+        (, uint256 withdrawFee, , ) = _feeConfig();
+        return assets - _feeOnTotal(assets, withdrawFee);
     }
 
     /// @inheritdoc IVaultBase
@@ -501,19 +482,18 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         _unpause();
     }
 
-    function _authorizeUpgrade(address newImplementation) internal override requiresAuth {}
-
     // ========================================= FEE INTERNAL FUNCTIONS =========================================
 
     /// @dev Override to handle fee on deposit
     /// @notice Fee is accumulated in pendingFees and excluded from totalAssets
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
-        uint256 feeAmount = _feeOnTotal(assets, feeOnDeposit);
+        (uint256 depositFee, , , ) = _feeConfig();
+        uint256 feeAmount = _feeOnTotal(assets, depositFee);
         
         super._deposit(caller, receiver, assets, shares);
 
         // Accumulate fee (will be excluded from totalAssets via pendingFees)
-        pendingFees += feeAmount;
+        _addPendingFees(feeAmount);
     }
 
     /// @dev Override to handle fee on withdraw (instant redemptions only)
@@ -525,24 +505,15 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         uint256 assets,
         uint256 shares
     ) internal override {
-        uint256 feeAmount = _feeOnTotal(assets, feeOnWithdraw);
+        // Take management/performance fees before charging exit fee (globalized)
+        (, uint256 withdrawFee, , ) = _feeConfig();
+        uint256 feeAmount = _feeOnTotal(assets, withdrawFee);
         uint256 assetsAfterFee = assets - feeAmount;
         
         super._withdraw(caller, receiver, owner, assetsAfterFee, shares);
         
         // Accumulate fee (will be excluded from totalAssets via pendingFees)
-        pendingFees += feeAmount;
+        _addPendingFees(feeAmount);
     }
 
-    /// @dev Calculates the fees that should be added to an amount `assets` that does not already include fees.
-    /// Used in {IERC4626-mint} and {IERC4626-withdraw} operations.
-    function _feeOnRaw(uint256 assets, uint256 feeBasisPoints) internal pure returns (uint256) {
-        return assets.mulDiv(feeBasisPoints, DENOMINATOR, Math.Rounding.Up);
-    }
-
-    /// @dev Calculates the fee part of an amount `assets` that already includes fees.
-    /// Used in {IERC4626-deposit} and {IERC4626-redeem} operations.
-    function _feeOnTotal(uint256 assets, uint256 feeBasisPoints) internal pure returns (uint256) {
-        return assets.mulDiv(feeBasisPoints, feeBasisPoints + DENOMINATOR, Math.Rounding.Up);
-    }
 }
