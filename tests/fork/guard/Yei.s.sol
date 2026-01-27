@@ -15,42 +15,71 @@ import { WNativeGuard } from "src/guards/base/WNativeGuard.sol";
 
 contract GuardForkTest is Test {
     // BSC Mainnet deployment addresses
-    address VAULT = vm.envAddress("VAULT_ADDRESS");
-    address AUTHORITY = vm.envAddress("ROLES_AUTHORITY_ADDRESS");
-    address OWNER = 0xD4B5314E9412dBC1c772093535dF451a1E2Af1A4;
-    address YEI_POOL = vm.envAddress("YEI_POOL");
+    address VAULT;
+    address AUTHORITY;
+    address constant OWNER = 0xD4B5314E9412dBC1c772093535dF451a1E2Af1A4;
+    address YEI_POOL;
     WNativeGuard wseiGuard;
     ElitraVault vault;
     Authority authority;
     address owner;
     IERC20 asset;
+    bool forkEnabled;
 
 
     function setUp() public {
-        // Fork BSC mainnet - use RPC_URL from environment or default
-        string memory rpcUrl = vm.envString("RPC_URL");
-        vm.createSelectFork(rpcUrl);
+        // Check if required environment variables are set
+        try vm.envString("RPC_URL") returns (string memory rpcUrl) {
+            try vm.envAddress("VAULT_ADDRESS") returns (address vaultAddr) {
+                VAULT = vaultAddr;
+                try vm.envAddress("ROLES_AUTHORITY_ADDRESS") returns (address authAddr) {
+                    AUTHORITY = authAddr;
+                    try vm.envAddress("YEI_POOL") returns (address yeiPool) {
+                        YEI_POOL = yeiPool;
+                        try vm.envAddress("ASSET_ADDRESS") returns (address assetAddr) {
+                            asset = IERC20(assetAddr);
 
-        // Load deployed contracts
-        vault = ElitraVault(payable(VAULT));
-        authority = Authority(AUTHORITY);
-        asset = IERC20(vm.envAddress("ASSET_ADDRESS"));
+                            // Fork BSC mainnet
+                            vm.createSelectFork(rpcUrl);
 
-        // Get the owner from the deployed contract
-        owner = vault.owner();
+                            // Load deployed contracts
+                            vault = ElitraVault(payable(VAULT));
+                            authority = Authority(AUTHORITY);
 
+                            // Get the owner from the deployed contract
+                            owner = vault.owner();
 
-        console.log("=== BSC Mainnet Fork Test Setup ===");
-        console.log("Vault:", address(vault));
-        console.log("Authority:", address(authority));
-        console.log("Owner:", owner);
-        console.log("Chain ID:", block.chainid);
+                            forkEnabled = true;
+
+                            console.log("=== BSC Mainnet Fork Test Setup ===");
+                            console.log("Vault:", address(vault));
+                            console.log("Authority:", address(authority));
+                            console.log("Owner:", owner);
+                            console.log("Chain ID:", block.chainid);
+                        } catch {
+                            forkEnabled = false;
+                        }
+                    } catch {
+                        forkEnabled = false;
+                    }
+                } catch {
+                    forkEnabled = false;
+                }
+            } catch {
+                forkEnabled = false;
+            }
+        } catch {
+            forkEnabled = false;
+        }
     }
 
     function test_yei_pool_guard() public {
+        if (!forkEnabled) {
+            return;
+        }
         vm.startPrank(owner);
 
-        // deal token for vault 
+        // deal token for vault
         deal(address(asset), address(vault), 1000000);
 
         // YEi deposit selector: supply(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)

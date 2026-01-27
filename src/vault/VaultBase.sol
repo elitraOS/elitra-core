@@ -27,6 +27,7 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, UUPSUpgrade
         mapping(address target => ITransactionGuard guard) guards;
         EnumerableSetUpgradeable.AddressSet trustedTargets;
         EnumerableSetUpgradeable.AddressSet guardedTargets;
+        address upgradeAdmin;
     }
 
     // keccak256(abi.encode(uint256(keccak256("elitra.storage.vaultbase")) - 1)) & ~bytes32(uint256(0xff))
@@ -50,10 +51,12 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, UUPSUpgrade
 
     /// @notice Initialize the vault base
     /// @param _owner The address of the owner
-    function __VaultBase_init(address _owner) internal onlyInitializing {
+    function __VaultBase_init(address _owner, address _upgradeAdmin) internal onlyInitializing {
+        if (_upgradeAdmin == address(0)) revert Errors.ZeroAddress();
         __Auth_init(_owner, Authority(address(0)));
         __Pausable_init();
         __UUPSUpgradeable_init();
+        _getVaultBaseStorage().upgradeAdmin = _upgradeAdmin;
     }
 
     /// @notice Pause the vault
@@ -188,9 +191,22 @@ abstract contract VaultBase is AuthUpgradeable, PausableUpgradeable, UUPSUpgrade
         payable(owner()).transfer(address(this).balance);
     }
 
-    /// @notice Authorizes an upgrade to a new implementation
-    /// @param newImplementation The address of the new implementation
-    function _authorizeUpgrade(address newImplementation) internal virtual override requiresAuth {
+    /// @notice Returns the address allowed to authorize upgrades
+    function upgradeAdmin() public view returns (address) {
+        return _getVaultBaseStorage().upgradeAdmin;
+    }
+
+    /// @notice Update the upgrade admin
+    function setUpgradeAdmin(address newUpgradeAdmin) external {
+        if (newUpgradeAdmin == address(0)) revert Errors.ZeroAddress();
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        if (msg.sender != vaultBaseStorage.upgradeAdmin) revert Errors.Unauthorized();
+        vaultBaseStorage.upgradeAdmin = newUpgradeAdmin;
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal virtual override {
+        VaultBaseStorage storage vaultBaseStorage = _getVaultBaseStorage();
+        if (msg.sender != vaultBaseStorage.upgradeAdmin) revert Errors.Unauthorized();
         newImplementation;
     }
 }

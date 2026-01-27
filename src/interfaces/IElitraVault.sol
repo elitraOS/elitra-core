@@ -5,10 +5,11 @@ import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfa
 import { IBalanceUpdateHook } from "./IBalanceUpdateHook.sol";
 import { IRedemptionHook } from "./IRedemptionHook.sol";
 import { IVaultBase, Call } from "./IVaultBase.sol";
+import { IFeeManager } from "../fees/FeeManager.sol";
 
 /// @title IElitraVault
 /// @notice Interface for ElitraVault with adapter integration
-interface IElitraVault is IERC4626Upgradeable, IVaultBase {
+interface IElitraVault is IERC4626Upgradeable, IVaultBase, IFeeManager {
     /// @notice Pending redemption data structure
     struct PendingRedeem {
         uint256 assets;
@@ -52,12 +53,7 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase {
     function cancelRedeem(address receiver, uint256 assets) external;
     function pendingRedeemRequest(address user) external view returns (uint256 assets);
 
-    // Fee management
-    function feeOnDeposit() external view returns (uint256);
-    function feeOnWithdraw() external view returns (uint256);
-    function feeOnQueuedRedeem() external view returns (uint256);
-    function feeRecipient() external view returns (address);
-    function pendingFees() external view returns (uint256);
+    // Fee management (setters and mutators - view functions in IFeeManager)
     function setDepositFee(uint256 newFee) external;
     function setWithdrawFee(uint256 newFee) external;
     function setQueuedRedeemFee(uint256 newFee) external;
