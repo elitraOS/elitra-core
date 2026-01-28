@@ -69,7 +69,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         __VaultBase_init(_owner, _upgradeAdmin);
 
         // FeeManager (Lagoon-inspired): initialize with safe defaults (0 fees) and receivers set to owner.
-        __FeeManager_init(_owner, _owner, _feeRegistry, 0, 0, 0, 0);
+        __FeeManager_init(_owner, _feeRegistry, 0, 0, 0);
 
         require(address(_balanceUpdateHook) != address(0), Errors.ZeroAddress());
         require(address(_redemptionHook) != address(0), Errors.ZeroAddress());
@@ -143,14 +143,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         _updateRates(Rates({ managementRate: managementRateBps, performanceRate: performanceRateBps }));
     }
 
-    /// @notice Set fee receivers
-    function setFeeReceivers(address feeReceiver, address protocolFeeReceiver) external requiresAuth {
-        _setFeeReceivers(feeReceiver, protocolFeeReceiver);
-    }
-
-    /// @notice Set protocol fee cut (bps of total fee shares)
-    function setProtocolRateBps(uint16 newRateBps) external requiresAuth {
-        _setProtocolRateBps(newRateBps);
+    /// @notice Set the manager fee receiver
+    function setFeeReceiver(address feeReceiver) external requiresAuth {
+        _setFeeReceiver(feeReceiver);
     }
 
     /// @notice Set the fee registry used for protocol fee rate lookup

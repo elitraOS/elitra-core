@@ -47,8 +47,7 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
 
     event HighWaterMarkUpdated(uint256 oldHighWaterMark, uint256 newHighWaterMark);
     event RatesUpdated(Rates oldRates, Rates newRates, uint256 applyTimestamp);
-    event FeeReceiversUpdated(address feeReceiver, address protocolFeeReceiver);
-    event ProtocolRateUpdated(uint256 oldRateBps, uint256 newRateBps);
+    event FeeReceiverUpdated(address indexed oldReceiver, address indexed newReceiver);
     event FeeRegistryUpdated(address indexed oldRegistry, address indexed newRegistry);
     event FeesTaken(uint256 managerShares, uint256 protocolShares);
 
@@ -60,6 +59,7 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
     /// @custom:storage-definition erc7201:elitra.storage.feeManager
     struct FeeManagerStorage {
         address feeReceiver;
+        // Deprecated: kept for storage compatibility.
         address protocolFeeReceiver;
         uint16 protocolRateBps;
 
@@ -94,23 +94,18 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
     // solhint-disable-next-line func-name-mixedcase
     function __FeeManager_init(
         address _feeReceiver,
-        address _protocolFeeReceiver,
         address _feeRegistry,
-        uint16 _protocolRateBps,
         uint16 _managementRate,
         uint16 _performanceRate,
         uint256 _cooldown
     ) internal onlyInitializing {
-        if (_feeReceiver == address(0) || _protocolFeeReceiver == address(0)) revert ZeroAddress();
+        if (_feeReceiver == address(0) || _feeRegistry == address(0)) revert ZeroAddress();
         if (_managementRate > MAX_MANAGEMENT_RATE) revert AboveMaxRate(MAX_MANAGEMENT_RATE);
         if (_performanceRate > MAX_PERFORMANCE_RATE) revert AboveMaxRate(MAX_PERFORMANCE_RATE);
-        if (_protocolRateBps > MAX_PROTOCOL_RATE) revert AboveMaxRate(MAX_PROTOCOL_RATE);
 
         FeeManagerStorage storage $ = _getFeeManagerStorage();
 
         $.feeReceiver = _feeReceiver;
-        $.protocolFeeReceiver = _protocolFeeReceiver;
-        $.protocolRateBps = _protocolRateBps;
         $.feeRegistry = _feeRegistry;
         $.feeRecipient = _feeReceiver;
 
@@ -203,20 +198,12 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         emit RatesUpdated(current, newRates, applyTs);
     }
 
-    function _setFeeReceivers(address _feeReceiver, address _protocolFeeReceiver) internal {
-        if (_feeReceiver == address(0) || _protocolFeeReceiver == address(0)) revert ZeroAddress();
+    function _setFeeReceiver(address newFeeReceiver) internal {
+        if (newFeeReceiver == address(0)) revert ZeroAddress();
         FeeManagerStorage storage $ = _getFeeManagerStorage();
-        $.feeReceiver = _feeReceiver;
-        $.protocolFeeReceiver = _protocolFeeReceiver;
-        emit FeeReceiversUpdated(_feeReceiver, _protocolFeeReceiver);
-    }
-
-    function _setProtocolRateBps(uint16 newRateBps) internal {
-        if (newRateBps > MAX_PROTOCOL_RATE) revert AboveMaxRate(MAX_PROTOCOL_RATE);
-        FeeManagerStorage storage $ = _getFeeManagerStorage();
-        uint256 old = $.protocolRateBps;
-        $.protocolRateBps = newRateBps;
-        emit ProtocolRateUpdated(old, newRateBps);
+        address old = $.feeReceiver;
+        $.feeReceiver = newFeeReceiver;
+        emit FeeReceiverUpdated(old, newFeeReceiver);
     }
 
     function _setDepositFee(uint256 newFee) internal returns (uint256 oldFee) {
@@ -397,16 +384,15 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
 
     function _protocolRate() internal view returns (uint16) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
-        if ($.feeRegistry == address(0)) return $.protocolRateBps;
-        uint16 registryRate = IFeeRegistry($.feeRegistry).protocolFeeRateBps();
+        if ($.feeRegistry == address(0)) revert ZeroAddress();
+        uint16 registryRate = IFeeRegistry($.feeRegistry).protocolFeeRateBps(address(this));
         return registryRate > MAX_PROTOCOL_RATE ? MAX_PROTOCOL_RATE : registryRate;
     }
 
     function _protocolFeeReceiver() internal view returns (address) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
-        if ($.feeRegistry == address(0)) return $.protocolFeeReceiver;
-        address registryReceiver = IFeeRegistry($.feeRegistry).protocolFeeReceiver();
-        return registryReceiver == address(0) ? $.protocolFeeReceiver : registryReceiver;
+        if ($.feeRegistry == address(0)) revert ZeroAddress();
+        return IFeeRegistry($.feeRegistry).protocolFeeReceiver();
     }
 
     function _feeOnRaw(uint256 assets, uint256 feeRate) internal pure returns (uint256) {

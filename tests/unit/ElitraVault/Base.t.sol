@@ -6,6 +6,7 @@ import { ElitraVault } from "../../../src/ElitraVault.sol";
 import { ManualBalanceUpdateHook } from "../../../src/hooks/ManualBalanceUpdateHook.sol";
 import { HybridRedemptionHook } from "../../../src/hooks/HybridRedemptionHook.sol";
 import { ERC20Mock } from "../../mocks/ERC20Mock.sol";
+import { FeeRegistryMock } from "../../mocks/FeeRegistryMock.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
 contract ElitraVault_Base_Test is Test {
@@ -13,6 +14,7 @@ contract ElitraVault_Base_Test is Test {
     ElitraVault public vault;
     ManualBalanceUpdateHook public balanceUpdateHook;
     HybridRedemptionHook public redemptionHook;
+    FeeRegistryMock public feeRegistry;
     ERC20Mock public asset;
 
     address public owner;
@@ -29,6 +31,9 @@ contract ElitraVault_Base_Test is Test {
         balanceUpdateHook = new ManualBalanceUpdateHook(owner);
         redemptionHook = new HybridRedemptionHook();
 
+        // Deploy fee registry (required by FeeManager now)
+        feeRegistry = new FeeRegistryMock(0, owner); // 0 protocol fee, owner as receiver
+
         // Deploy vault implementation
         vaultImplementation = new ElitraVault();
 
@@ -38,7 +43,7 @@ contract ElitraVault_Base_Test is Test {
             address(asset),
             owner,
             owner,
-            address(0),
+            address(feeRegistry),
             address(balanceUpdateHook),
             address(redemptionHook),
             "Elitra USDC Vault",
