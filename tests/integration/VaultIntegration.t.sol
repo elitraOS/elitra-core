@@ -38,6 +38,8 @@ contract VaultIntegration_Test is Test {
             ElitraVault.initialize.selector,
             address(usdc),
             owner,
+            owner,
+            address(0),
             address(balanceUpdateHook),
             address(redemptionHook),
             "Elitra USDC Vault",

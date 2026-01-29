@@ -78,7 +78,7 @@ contract Fee_Test is ElitraVault_Base_Test {
 
     function test_SetFeeRecipient_EmitsEvent() public {
         vm.expectEmit(true, true, true, true);
-        emit IElitraVault.FeeRecipientUpdated(address(0), feeCollector);
+        emit IElitraVault.FeeRecipientUpdated(owner, feeCollector);
 
         vm.prank(owner);
         vault.setFeeRecipient(feeCollector);
@@ -273,8 +273,8 @@ contract Fee_Test is ElitraVault_Base_Test {
         vault.claimFees();
     }
 
-    function test_ClaimFees_RevertsIfNoRecipient() public {
-        // Setup: set fees but NO recipient
+    function test_ClaimFees_UsesDefaultRecipient() public {
+        // Setup: set fees, default recipient is owner
         vm.prank(owner);
         vault.setDepositFee(ONE_PERCENT_FEE);
 
@@ -282,10 +282,16 @@ contract Fee_Test is ElitraVault_Base_Test {
         vm.prank(alice);
         vault.deposit(1000e6, alice);
 
-        // Try to claim without recipient set
+        uint256 pendingFees = vault.pendingFees();
+        uint256 ownerBalanceBefore = asset.balanceOf(owner);
+
+        // Claim fees to default recipient
         vm.prank(owner);
-        vm.expectRevert(Errors.ZeroAddress.selector);
         vault.claimFees();
+
+        uint256 ownerBalanceAfter = asset.balanceOf(owner);
+        assertEq(ownerBalanceAfter - ownerBalanceBefore, pendingFees);
+        assertEq(vault.pendingFees(), 0);
     }
 
     // ========================================= FEE DOES NOT AFFECT SHARE PRICE =========================================
@@ -336,4 +342,3 @@ contract Fee_Test is ElitraVault_Base_Test {
         assertApproxEqRel(bobFee, feesAfterAlice * 2, 0.02e18);
     }
 }
-

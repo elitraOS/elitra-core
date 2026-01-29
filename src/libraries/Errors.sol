@@ -46,4 +46,5 @@ library Errors {
 
     /// @notice Thrown when the fee exceeds the maximum allowed
     error InvalidFee();
+
 }
