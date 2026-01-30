@@ -235,12 +235,12 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         PendingRedeem storage pending = _pendingRedeem[receiver];
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
-        pending.assets -= assets;
-        totalPendingAssets -= assets;
-
         // Mint shares based on current price to avoid price distortion
         // Use super.previewDeposit to bypass fee - cancel should not charge fee
         uint256 sharesToMint = super.previewDeposit(assets);
+
+        pending.assets -= assets;
+        totalPendingAssets -= assets;
 
         emit RequestCancelled(receiver, assets, sharesToMint);
         _mint(receiver, sharesToMint);
