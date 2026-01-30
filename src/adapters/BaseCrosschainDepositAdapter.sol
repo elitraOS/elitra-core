@@ -222,18 +222,20 @@ abstract contract BaseCrosschainDepositAdapter is
         uint256 minAmountOut,
         Call[] calldata zapCalls
     ) external onlySelf {
+        DepositRecord storage record = depositRecords[depositId];
+
         IERC20(token).forceApprove(depositQueue, amount);
 
         // get share price
-        uint256 sharePrice = IElitraVault(depositRecords[depositId].vault).lastPricePerShare();
+        uint256 sharePrice = IElitraVault(record.vault).lastPricePerShare();
 
         ICrosschainDepositQueue(depositQueue).recordFailedDeposit(
-            depositRecords[depositId].user,
-            depositRecords[depositId].srcEid,
+            record.user,
+            record.srcEid,
             token,
             amount,
-            depositRecords[depositId].vault,
-            depositRecords[depositId].guid,
+            record.vault,
+            record.guid,
             reason,
             sharePrice,
             minAmountOut,
