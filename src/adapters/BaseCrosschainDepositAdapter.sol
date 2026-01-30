@@ -276,6 +276,18 @@ abstract contract BaseCrosschainDepositAdapter is
         else IERC20(token).safeTransfer(to, amount);
     }
 
+    function transferOwnership(address newOwner) public override onlyOwner {
+        address oldOwner = owner();
+        if (newOwner == oldOwner) return;
+
+        super.transferOwnership(newOwner);
+
+        _grantRole(DEFAULT_ADMIN_ROLE, newOwner);
+        _grantRole(OPERATOR_ROLE, newOwner);
+        _revokeRole(DEFAULT_ADMIN_ROLE, oldOwner);
+        _revokeRole(OPERATOR_ROLE, oldOwner);
+    }
+
     function _authorizeUpgrade(address) internal virtual override onlyOwner {}
 
     // ================== VIEW ==================
@@ -304,4 +316,3 @@ abstract contract BaseCrosschainDepositAdapter is
         _;
     }
 }
-

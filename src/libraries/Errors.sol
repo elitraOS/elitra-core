@@ -25,6 +25,9 @@ library Errors {
 
     /// @notice Thrown when redeem() or withdraw() is called
     error UseRequestRedeem();
+    
+    /// @notice Thrown when manageBatch() is called instead of manageBatchWithDelta()
+    error UseManageBatchWithDelta();
 
     /// @notice Thrown when attempting to set zero address for adapter
     error ZeroAddress();

@@ -85,7 +85,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     function _updateBalance(uint256 newAggregatedBalance) internal {
         // 1. Pull validation from balance update hook (read-only)
         (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
-            lastPricePerShare, totalSupply(), IERC20(asset()).balanceOf(address(this)), newAggregatedBalance
+            lastPricePerShare, totalSupply(), _netTotalAssets(newAggregatedBalance)
         );
 
         // 2. Check if should pause
@@ -114,6 +114,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         // Update last block updated and timestamp updated
         lastBlockUpdated = block.number;  // Only external syncs reset NAV freshness
         lastTimestampUpdated = block.timestamp;
+    }
+
+    function _netTotalAssets(uint256 newAggregatedBalance) internal view returns (uint256) {
+        uint256 idleAssets = IERC20(asset()).balanceOf(address(this));
+        uint256 totalAssetsAfter = idleAssets + newAggregatedBalance;
+        uint256 excluded = totalPendingAssets + pendingFees();
+        return totalAssetsAfter > excluded ? totalAssetsAfter - excluded : 0;
     }
 
     /// @inheritdoc IElitraVault
@@ -228,12 +235,12 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         PendingRedeem storage pending = _pendingRedeem[receiver];
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
-        pending.assets -= assets;
-        totalPendingAssets -= assets;
-
         // Mint shares based on current price to avoid price distortion
         // Use super.previewDeposit to bypass fee - cancel should not charge fee
         uint256 sharesToMint = super.previewDeposit(assets);
+
+        pending.assets -= assets;
+        totalPendingAssets -= assets;
 
         emit RequestCancelled(receiver, assets, sharesToMint);
         _mint(receiver, sharesToMint);
@@ -295,41 +302,41 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     }
 
     function manageBatch(Call[] calldata calls) public payable override(VaultBase, IVaultBase) {
-        // Get asset balance before execution
-        uint256 beforeBalance = IERC20(asset()).balanceOf(address(this));
+        revert Errors.UseManageBatchWithDelta();
+    }
 
+    function manageBatchWithDelta(
+        Call[] calldata calls,
+        int256 externalDelta
+    )
+        public
+        payable
+        requiresAuth
+    {
         // Execute batch operations
         super.manageBatch(calls);
 
-        // Update aggregated balance based on vault asset balance change
-        uint256 afterBalance = IERC20(asset()).balanceOf(address(this));
-        if (afterBalance != beforeBalance) {
-            uint256 balanceChange =
-                afterBalance > beforeBalance ? afterBalance - beforeBalance : beforeBalance - afterBalance;
-
-            // Prevent underflow when funds come in
-            if (afterBalance > beforeBalance) {
-                require(balanceChange <= aggregatedUnderlyingBalances, "Balance change exceeds external balances");
-            }
-
-            uint256 newAggregatedUnderlyingBalances = afterBalance > beforeBalance
-                ? aggregatedUnderlyingBalances - balanceChange  // funds came In, -> extenal balances when down
-                : aggregatedUnderlyingBalances + balanceChange; // funds went out, -> extenal balances when up
-
-            _updateBalance(newAggregatedUnderlyingBalances);
+        // Apply explicit external balance delta
+        uint256 newAggregatedUnderlyingBalances;
+        if (externalDelta >= 0) {
+            newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances + uint256(externalDelta);
+        } else {
+            uint256 absDelta = uint256(-externalDelta);
+            require(absDelta <= aggregatedUnderlyingBalances, "External delta exceeds balances");
+            newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances - absDelta;
         }
+
+        _updateBalance(newAggregatedUnderlyingBalances);
     }
 
     // ========================================= ERC4626 OVERRIDES =========================================
 
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
-        uint256 vaultBalance = IERC20(asset()).balanceOf(address(this));
-        uint256 total = vaultBalance + aggregatedUnderlyingBalances;
-        // Exclude both:
-        // 1. totalPendingAssets - assets reserved for queued redemptions (belong to redeemers)
-        // 2. pendingFees - accumulated fees (belong to fee recipient)
-        uint256 excluded = totalPendingAssets + pendingFees();
-        return total > excluded ? total - excluded : 0;
+        return _netTotalAssets(aggregatedUnderlyingBalances);
+    }
+
+    function netTotalAssets() external view returns (uint256) {
+        return _netTotalAssets(aggregatedUnderlyingBalances);
     }
 
     function deposit(

@@ -77,10 +77,10 @@ contract ElitraVaultFactory is Ownable {
         require(address(balanceHook) != address(0), "balance hook zero");
         require(address(redemptionHook) != address(0), "redemption hook zero");
         require(seedReceiver != address(0), "receiver zero");
-        require(vaultBySalt[salt] == address(0), "salt used");
 
         // Derive caller-specific salt to prevent front-running
         bytes32 effectiveSalt = keccak256(abi.encodePacked(salt, msg.sender));
+        require(vaultBySalt[effectiveSalt] == address(0), "salt used");
 
         bytes memory initData = abi.encodeWithSelector(
             ElitraVault.initialize.selector,
@@ -114,7 +114,7 @@ contract ElitraVaultFactory is Ownable {
         // Remaining shares go to seedReceiver
         shares = ElitraVault(vault).deposit(initialSeed - BOOTSTRAP_AMOUNT, seedReceiver);
 
-        vaultBySalt[salt] = vault;
+        vaultBySalt[effectiveSalt] = vault;
         allVaults.push(vault);
         vaultsByAsset[address(asset)].push(vault);
 
