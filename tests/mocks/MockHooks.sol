@@ -34,8 +34,7 @@ contract MockBalanceUpdateHook is IBalanceUpdateHook {
     function beforeBalanceUpdate(
         uint256 /*currentPPS*/,
         uint256 totalSupply,
-        uint256 idleAssets,
-        uint256 newAggregatedBalance
+        uint256 totalAssets
     )
         external
         view
@@ -46,7 +45,6 @@ contract MockBalanceUpdateHook is IBalanceUpdateHook {
             return (false, 0);
         }
 
-        uint256 totalAssets = idleAssets + newAggregatedBalance;
         newPPS = totalSupply > 0
             ? (totalAssets * 1e18) / totalSupply
             : 1e18;

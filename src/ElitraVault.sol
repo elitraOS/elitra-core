@@ -302,29 +302,31 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     }
 
     function manageBatch(Call[] calldata calls) public payable override(VaultBase, IVaultBase) {
-        // Get asset balance before execution
-        uint256 beforeBalance = IERC20(asset()).balanceOf(address(this));
+        revert Errors.UseManageBatchWithDelta();
+    }
 
+    function manageBatchWithDelta(
+        Call[] calldata calls,
+        int256 externalDelta
+    )
+        public
+        payable
+        requiresAuth
+    {
         // Execute batch operations
         super.manageBatch(calls);
 
-        // Update aggregated balance based on vault asset balance change
-        uint256 afterBalance = IERC20(asset()).balanceOf(address(this));
-        if (afterBalance != beforeBalance) {
-            uint256 balanceChange =
-                afterBalance > beforeBalance ? afterBalance - beforeBalance : beforeBalance - afterBalance;
-
-            // Prevent underflow when funds come in
-            if (afterBalance > beforeBalance) {
-                require(balanceChange <= aggregatedUnderlyingBalances, "Balance change exceeds external balances");
-            }
-
-            uint256 newAggregatedUnderlyingBalances = afterBalance > beforeBalance
-                ? aggregatedUnderlyingBalances - balanceChange  // funds came In, -> extenal balances when down
-                : aggregatedUnderlyingBalances + balanceChange; // funds went out, -> extenal balances when up
-
-            _updateBalance(newAggregatedUnderlyingBalances);
+        // Apply explicit external balance delta
+        uint256 newAggregatedUnderlyingBalances;
+        if (externalDelta >= 0) {
+            newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances + uint256(externalDelta);
+        } else {
+            uint256 absDelta = uint256(-externalDelta);
+            require(absDelta <= aggregatedUnderlyingBalances, "External delta exceeds balances");
+            newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances - absDelta;
         }
+
+        _updateBalance(newAggregatedUnderlyingBalances);
     }
 
     // ========================================= ERC4626 OVERRIDES =========================================

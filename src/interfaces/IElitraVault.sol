@@ -52,6 +52,7 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase, IFeeManager {
     function fulfillRedeem(address receiver, uint256 assets) external;
     function cancelRedeem(address receiver, uint256 assets) external;
     function pendingRedeemRequest(address user) external view returns (uint256 assets);
+    function manageBatchWithDelta(Call[] calldata calls, int256 externalDelta) external payable;
 
     // Fee management (setters and mutators - view functions in IFeeManager)
     function setDepositFee(uint256 newFee) external;
