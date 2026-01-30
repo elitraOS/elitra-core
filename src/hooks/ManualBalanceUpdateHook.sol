@@ -32,16 +32,12 @@ contract ManualBalanceUpdateHook is IBalanceUpdateHook, Auth {
     function beforeBalanceUpdate(
         uint256 currentPPS,
         uint256 totalSupply,
-        uint256 idleAssets,
-        uint256 newAggregatedBalance
+        uint256 totalAssets
     )
         external
         view
         returns (bool shouldContinue, uint256 newPPS)
     {
-        // Calculate total assets
-        uint256 totalAssets = idleAssets + newAggregatedBalance;
-
         // Calculate new price per share
         if (totalSupply == 0) {
             newPPS = DENOMINATOR;

@@ -7,15 +7,13 @@ interface IBalanceUpdateHook {
     /// @notice Called before balance update to validate and calculate new PPS
     /// @param currentPPS Current price per share
     /// @param totalSupply Total vault shares
-    /// @param idleAssets Idle assets in vault
-    /// @param newAggregatedBalance New aggregated balance from strategies
+    /// @param totalAssets Net vault assets used for PPS (after exclusions)
     /// @return shouldContinue If false, update should be rejected and vault paused
     /// @return newPPS Calculated new price per share
     function beforeBalanceUpdate(
         uint256 currentPPS,
         uint256 totalSupply,
-        uint256 idleAssets,
-        uint256 newAggregatedBalance
+        uint256 totalAssets
     ) external view returns (bool shouldContinue, uint256 newPPS);
 
     /// @notice Called after balance update completes (for future extensibility)

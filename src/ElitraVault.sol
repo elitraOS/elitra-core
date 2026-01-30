@@ -85,7 +85,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     function _updateBalance(uint256 newAggregatedBalance) internal {
         // 1. Pull validation from balance update hook (read-only)
         (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
-            lastPricePerShare, totalSupply(), IERC20(asset()).balanceOf(address(this)), newAggregatedBalance
+            lastPricePerShare, totalSupply(), _netTotalAssets(newAggregatedBalance)
         );
 
         // 2. Check if should pause
@@ -114,6 +114,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         // Update last block updated and timestamp updated
         lastBlockUpdated = block.number;  // Only external syncs reset NAV freshness
         lastTimestampUpdated = block.timestamp;
+    }
+
+    function _netTotalAssets(uint256 newAggregatedBalance) internal view returns (uint256) {
+        uint256 idleAssets = IERC20(asset()).balanceOf(address(this));
+        uint256 totalAssetsAfter = idleAssets + newAggregatedBalance;
+        uint256 excluded = totalPendingAssets + pendingFees();
+        return totalAssetsAfter > excluded ? totalAssetsAfter - excluded : 0;
     }
 
     /// @inheritdoc IElitraVault
@@ -323,13 +330,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     // ========================================= ERC4626 OVERRIDES =========================================
 
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
-        uint256 vaultBalance = IERC20(asset()).balanceOf(address(this));
-        uint256 total = vaultBalance + aggregatedUnderlyingBalances;
-        // Exclude both:
-        // 1. totalPendingAssets - assets reserved for queued redemptions (belong to redeemers)
-        // 2. pendingFees - accumulated fees (belong to fee recipient)
-        uint256 excluded = totalPendingAssets + pendingFees();
-        return total > excluded ? total - excluded : 0;
+        return _netTotalAssets(aggregatedUnderlyingBalances);
+    }
+
+    function netTotalAssets() external view returns (uint256) {
+        return _netTotalAssets(aggregatedUnderlyingBalances);
     }
 
     function deposit(
