@@ -43,19 +43,17 @@ contract CCTP_SendUSDC_ToSei_WithHook is BaseScript {
     address internal constant USDC_OP_MAINNET = 0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85;
 
     function run() public broadcast {
-        // Get configuration
-        uint256 amount = vm.envOr("AMOUNT", uint256(10_000)); // Default 0.01 USDC
-        address recipient = vm.envOr("RECIPIENT", broadcaster);
-        uint256 maxFee = vm.envOr("MAX_FEE", amount / 100); // Default 1%
+        // Get configuration - cache to reduce stack pressure
         address adapterAddress = vm.envAddress("CCTP_ADAPTER_ADDRESS");
-
-        // Vault configuration for hook
         address vault = vm.envAddress("VAULT_ADDRESS");
         require(vault != address(0), "VAULT env var required");
 
-        // Detect source chain
-        uint256 chainId = getChainId();
-        (address usdc, uint32 sourceDomain, string memory chainName) = _getChainConfig(chainId);
+        // Detect source chain early
+        (address usdc, uint32 sourceDomain, string memory chainName) = _getChainConfig(getChainId());
+
+        uint256 amount = vm.envOr("AMOUNT", uint256(10_000)); // Default 0.01 USDC
+        address recipient = vm.envOr("RECIPIENT", broadcaster);
+        uint256 maxFee = vm.envOr("MAX_FEE", amount / 100); // Default 1%
 
         console.log("=== CCTP V2 USDC Transfer to SEI with Hook ===");
         console.log("Source Chain:", chainName);
@@ -77,14 +75,10 @@ contract CCTP_SendUSDC_ToSei_WithHook is BaseScript {
         _approveIfNeeded(usdc, amount);
 
         // Encode hook data using CCTPCrosschainDepositAdapter helper
-        Call[] memory zapCalls = new Call[](0); // No zaps for direct USDC deposit
-        bytes memory hookData = _encodeHookData(vault, recipient, 0, zapCalls);
+        bytes memory hookData = _encodeHookData(vault, recipient, 0, new Call[](0));
 
         console.log("\n=== Hook Data ===");
         console.log("Hook data length:", hookData.length);
-
-        // Convert recipient to bytes32
-        bytes32 mintRecipient = _addressToBytes32(adapterAddress);
 
         // Call depositForBurnWithHook
         console.log("\n=== Calling depositForBurnWithHook ===");
@@ -92,7 +86,7 @@ contract CCTP_SendUSDC_ToSei_WithHook is BaseScript {
         ITokenMessengerV2(TOKEN_MESSENGER_V2).depositForBurnWithHook(
             amount,
             DOMAIN_SEI,
-            mintRecipient,
+            _addressToBytes32(adapterAddress),
             usdc,
             bytes32(0), // Any address can relay
             maxFee,
