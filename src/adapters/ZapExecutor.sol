@@ -21,7 +21,14 @@ contract ZapExecutor {
 
     /**
      * @notice Execute zap and deposit to vault
-     * @dev This contract must hold 0 funds before and after this call
+     * @param tokenIn Input token address
+     * @param amountIn Amount of input tokens to swap
+     * @param vault Vault address to deposit into
+     * @param receiver Address to receive vault shares
+     * @param minAmountOut Minimum amount of vault asset expected from zap
+     * @param zapCalls Array of calls to execute for the zap (swaps, etc.)
+     * @return shares Amount of vault shares minted to receiver
+     * @dev This contract must hold 0 funds before and after this call. Reverts if zap fails, slippage exceeded, or deposit produces no shares
      */
     function executeZapAndDeposit(
         address tokenIn,
@@ -59,13 +66,16 @@ contract ZapExecutor {
         sweepNative();
     }
 
-    /// @notice contract is design to be stateless -> allow anyone to sweep any dust token that is in the contract
+    /// @notice Sweep any remaining token dust from the contract
+    /// @param token Token address to sweep
+    /// @dev Contract is designed to be stateless - allows anyone to sweep dust tokens
     function sweepToken(address token) public {
         if (IERC20(token).balanceOf(address(this)) == 0) return;
         IERC20(token).safeTransfer(msg.sender, IERC20(token).balanceOf(address(this)));
     }
 
-    /// @notice contract is design to be stateless -> allow anyone to sweep any dust native that is in the contract
+    /// @notice Sweep any remaining native currency from the contract
+    /// @dev Contract is designed to be stateless - allows anyone to sweep dust native currency
     function sweepNative() public {
         if (address(this).balance == 0) return;
         payable(msg.sender).transfer(address(this).balance);

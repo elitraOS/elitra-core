@@ -71,6 +71,10 @@ contract Api3SwapAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         _disableInitializers();
     }
 
+    /// @notice Initialize the adapter with owner and vault addresses
+    /// @param _owner Address that will own the adapter
+    /// @param _vault Address of the vault that can use this adapter
+    /// @dev Sets default values: minReturnBps = 9900 (99%), defaultStaleSeconds = 1 hour, whitelists enforced
     function initialize(address _owner, address _vault) external initializer {
         __Ownable_init();
         __UUPSUpgradeable_init();
@@ -90,57 +94,88 @@ contract Api3SwapAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
     // ============================ admin ============================
 
+    /// @notice Enable or disable router whitelist enforcement
+    /// @param enforce If true, only whitelisted routers can be used; if false, any router is allowed
     function setEnforceRouterWhitelist(bool enforce) external onlyOwner {
         enforceRouterWhitelist = enforce;
     }
 
+    /// @notice Add or remove a router from the whitelist
+    /// @param router Address of the router to whitelist/unwhitelist
+    /// @param isAllowed True to allow the router, false to disallow
     function setWhitelistedRouter(address router, bool isAllowed) external onlyOwner {
         whitelistedRouters[router] = isAllowed;
     }
 
+    /// @notice Enable or disable token whitelist enforcement
+    /// @param enforce If true, only whitelisted tokens can be used; if false, any token is allowed
     function setEnforceTokenWhitelist(bool enforce) external onlyOwner {
         enforceTokenWhitelist = enforce;
     }
 
+    /// @notice Add or remove a token from the whitelist
+    /// @param token Address of the token to whitelist/unwhitelist
+    /// @param isAllowed True to allow the token, false to disallow
     function setWhitelistedToken(address token, bool isAllowed) external onlyOwner {
         whitelistedTokens[token] = isAllowed;
     }
 
+    /// @notice Set the minimum return basis points for swap validation
+    /// @param bps Minimum return in basis points (10000 = 100%, 9900 = 99%). Set to 0 to disable validation
+    /// @dev Reverts if bps > 10000. The adapter will validate that received output >= expected * bps / 10000
     function setMinReturnBps(uint16 bps) external onlyOwner {
         if (bps > 10_000) revert InvalidMinReturnBps(bps);
         minReturnBps = bps;
     }
 
+    /// @notice Set the default maximum staleness for API3 price feeds
+    /// @param newValue Maximum age in seconds before a price is considered stale (0 = no staleness check)
+    /// @dev This is used as the default when a price feed doesn't specify its own staleSeconds
     function setDefaultStaleSeconds(uint32 newValue) external onlyOwner {
         emit DefaultStaleSecondsSet(defaultStaleSeconds, newValue);
         defaultStaleSeconds = newValue;
     }
 
+    /// @notice Set or update the API3 price feed configuration for a token
+    /// @param token Address of the token (or NATIVE_TOKEN for native currency)
+    /// @param proxy Address of the API3 reader proxy contract
+    /// @param decimals Number of decimals in the price feed (typically 8 or 18)
+    /// @param staleSeconds Maximum age in seconds before price is considered stale (0 = use defaultStaleSeconds)
+    /// @dev Reverts if proxy is zero address
     function setPriceFeed(address token, address proxy, uint8 decimals, uint32 staleSeconds) external onlyOwner {
         if (proxy == address(0)) revert PriceFeedNotSet(token);
         priceFeeds[token] = PriceFeedConfig({ proxy: proxy, decimals: decimals, staleSeconds: staleSeconds });
         emit PriceFeedSet(token, proxy, decimals, staleSeconds);
     }
 
+    /// @notice Remove the price feed configuration for a token
+    /// @param token Address of the token to remove the price feed for
+    /// @dev After removal, swaps involving this token will fail price validation
     function removePriceFeed(address token) external onlyOwner {
         delete priceFeeds[token];
         emit PriceFeedRemoved(token);
     }
 
-    /// @notice Approve a router to spend this adapter's tokens (for when tokens accumulate here).
+    /// @notice Approve a router to spend this adapter's tokens (for when tokens accumulate here)
+    /// @param router Address of the router to approve
+    /// @param token Address of the token to approve
+    /// @param amount Amount to approve (use type(uint256).max for unlimited)
+    /// @dev This is useful when tokens accumulate in the adapter and need to be spent by a router
     function approveRouter(address router, address token, uint256 amount) external onlyOwner {
         IERC20(token).approve(router, amount);
     }
 
     // ============================ actions ============================
 
-    /// @notice Execute a swap by forwarding calldata to a router and validating output using API3.
-    /// @param router The router address.
-    /// @param tokenIn The token spent (or NATIVE_TOKEN).
-    /// @param tokenOut The token received (or NATIVE_TOKEN).
-    /// @param amountIn The intended input amount for the swap.
-    /// @param dstReceiver The intended receiver of the output (address(0) treated as this adapter).
-    /// @param payload Full calldata for the router call.
+    /// @notice Execute a swap by forwarding calldata to a router and validating output using API3
+    /// @param router The router address to call
+    /// @param tokenIn The token spent (or NATIVE_TOKEN for native currency)
+    /// @param tokenOut The token received (or NATIVE_TOKEN for native currency)
+    /// @param amountIn The intended input amount for the swap
+    /// @param dstReceiver The intended receiver of the output (address(0) treated as this adapter)
+    /// @param payload Full calldata for the router call
+    /// @return routerReturn Return value from the router call
+    /// @dev Validates router, tokens, and receiver before executing. Validates output against API3 prices after execution
     function execute(
         address router,
         address tokenIn,
@@ -288,8 +323,11 @@ contract Api3SwapAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         return amount / (10 ** (tokenDecimals - 18));
     }
 
-    /// @notice Allow adapter to receive native token.
+    /// @notice Allow adapter to receive native token
+    /// @dev Required for swaps that involve native currency
     receive() external payable {}
 
+    /// @dev Authorize upgrade to new implementation (UUPS pattern)
+    /// @param newImplementation Address of the new implementation contract
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 }

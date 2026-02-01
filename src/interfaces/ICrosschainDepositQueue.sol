@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import { Call } from "./IVaultBase.sol";
 
+/// @title ICrosschainDepositQueue
+/// @notice Interface for managing failed cross-chain deposits and their resolution
 interface ICrosschainDepositQueue {
     // ========================================= STRUCTS =========================================
 

@@ -138,12 +138,15 @@ contract ElitraVaultFactory is Ownable {
         predicted = address(uint160(uint256(hash)));
     }
 
-    /// @notice Number of vaults deployed by this factory.
+    /// @notice Get the total number of vaults deployed by this factory
+    /// @return Number of deployed vaults
     function allVaultsLength() external view returns (uint256) {
         return allVaults.length;
     }
 
-    /// @notice Get all vaults for a given asset.
+    /// @notice Get all vault addresses for a given asset
+    /// @param asset Asset address to query
+    /// @return Array of vault addresses using the specified asset
     function getVaultsByAsset(address asset) external view returns (address[] memory) {
         return vaultsByAsset[asset];
     }

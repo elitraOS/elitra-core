@@ -104,6 +104,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
     }
 
+    /// @notice Update the vault's aggregated underlying balance and price per share
+    /// @param newAggregatedBalance The new aggregated balance from external protocols
+    /// @dev Validates that balance hasn't been updated in the current block and calls the balance update hook
     function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
         // Validate not already updated this block
         require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
@@ -122,6 +125,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         return totalAssetsAfter > excluded ? totalAssetsAfter - excluded : 0;
     }
 
+    /// @notice Set the balance update hook used for validating balance updates
+    /// @param newAdapter Address of the new balance update hook (cannot be zero)
     /// @inheritdoc IElitraVault
     function setBalanceUpdateHook(IBalanceUpdateHook newAdapter) external requiresAuth {
         require(address(newAdapter) != address(0), Errors.ZeroAddress());
@@ -284,6 +289,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         emit FeesClaimed(recipient, fees);
     }
 
+    /// @notice Claim accumulated protocol fees and transfer to protocol fee recipient
+    /// @dev Protocol fees are determined by the fee registry
     function claimProtocolFees() external requiresAuth {
         (address recipient, uint256 fees) = _claimProtocolFees();
         emit FeesClaimed(recipient, fees);
@@ -300,10 +307,16 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         return _pendingRedeem[user].assets;
     }
 
+    /// @notice Batch management is disabled - use manageBatchWithDelta instead
+    /// @dev This function always reverts to prevent accidental use of the base manageBatch function
     function manageBatch(Call[] calldata) public payable override(VaultBase, IVaultBase) {
         revert Errors.UseManageBatchWithDelta();
     }
 
+    /// @notice Execute batch operations and update balance with explicit external delta
+    /// @param calls Array of calls to execute
+    /// @param externalDelta Explicit balance delta to apply (can be positive or negative)
+    /// @dev This function executes the batch calls and then updates the aggregated balance with the provided delta
     function manageBatchWithDelta(
         Call[] calldata calls,
         int256 externalDelta
@@ -336,6 +349,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         return _netTotalAssets(aggregatedUnderlyingBalances);
     }
 
+    /// @notice Get the net total assets (excluding pending assets and fees)
+    /// @return Net total assets available in the vault
     function netTotalAssets() external view returns (uint256) {
         return _netTotalAssets(aggregatedUnderlyingBalances);
     }
@@ -384,6 +399,12 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         revert Errors.UseRequestRedeem();
     }
 
+    /// @notice Redeem shares by calling requestRedeem
+    /// @param shares Amount of shares to redeem
+    /// @param receiver Address to receive the redeemed assets
+    /// @param owner Address that owns the shares
+    /// @return Assets amount redeemed (or REQUEST_ID if queued)
+    /// @dev This is a convenience wrapper around requestRedeem for ERC4626 compatibility
     function redeem(
         uint256 shares,
         address receiver,

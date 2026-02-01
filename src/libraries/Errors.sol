@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+/// @title Errors
+/// @notice Library containing custom error definitions used across the protocol
 library Errors {
     /// @notice Thrown when insufficient shares balance is available to complete the operation.
     error InsufficientShares();

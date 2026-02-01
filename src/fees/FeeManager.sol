@@ -121,61 +121,95 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         $.oldRates = $.rates;
     }
 
-    /// @notice Current fee rates (old rates during cooldown)
+    /// @notice Get current fee rates (uses old rates during cooldown period)
+    /// @return Fee rates struct containing managementRate and performanceRate in bps
+    /// @dev Returns old rates if cooldown period hasn't elapsed, otherwise returns new rates
     function feeRates() public view returns (Rates memory) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
         return $.newRatesTimestamp <= block.timestamp ? $.rates : $.oldRates;
     }
 
+    /// @notice Get fee receiver addresses
+    /// @return feeReceiver Manager fee receiver address
+    /// @return protocolFeeReceiver Protocol fee receiver address
     function feeReceivers() public view returns (address feeReceiver, address protocolFeeReceiver) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
         return ($.feeReceiver, _protocolFeeReceiver());
     }
 
+    /// @notice Get the deposit fee rate (in 1e18 denominator)
+    /// @return Deposit fee rate
+    /// @inheritdoc IFeeManager
     function feeOnDeposit() public virtual view returns (uint256) {
         return _getFeeManagerStorage().feeOnDeposit;
     }
 
+    /// @notice Get the withdraw fee rate (in 1e18 denominator)
+    /// @return Withdraw fee rate
+    /// @inheritdoc IFeeManager
     function feeOnWithdraw() public virtual view returns (uint256) {
         return _getFeeManagerStorage().feeOnWithdraw;
     }
 
+    /// @notice Get the queued redeem fee rate (in 1e18 denominator)
+    /// @return Queued redeem fee rate
+    /// @inheritdoc IFeeManager
     function feeOnQueuedRedeem() public virtual view returns (uint256) {
         return _getFeeManagerStorage().feeOnQueuedRedeem;
     }
 
+    /// @notice Get the fee recipient address
+    /// @return Fee recipient address
+    /// @inheritdoc IFeeManager
     function feeRecipient() public virtual view returns (address) {
         return _getFeeManagerStorage().feeRecipient;
     }
 
+    /// @notice Get total pending fees (manager + protocol)
+    /// @return Total pending fees in asset tokens
+    /// @inheritdoc IFeeManager
     function pendingFees() public virtual view returns (uint256) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
         return $.pendingFees + $.pendingProtocolFees;
     }
 
+    /// @notice Get pending protocol fees
+    /// @return Pending protocol fees in asset tokens
     function pendingProtocolFees() public view returns (uint256) {
         return _getFeeManagerStorage().pendingProtocolFees;
     }
 
+    /// @notice Get the protocol fee rate in basis points
+    /// @return Protocol fee rate in bps (capped at MAX_PROTOCOL_RATE)
     function protocolRateBps() public view returns (uint16) {
         return _protocolRate();
     }
 
+    /// @notice Get the high-water mark for performance fee calculation
+    /// @return High-water mark in asset units per share
+    /// @dev Performance fees are only charged when price per share exceeds this value
     function highWaterMark() public view returns (uint256) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
         return $.highWaterMark;
     }
 
+    /// @notice Get the timestamp of the last fee calculation
+    /// @return Timestamp of last fee calculation
     function lastFeeTime() public view returns (uint256) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
         return $.lastFeeTime;
     }
 
+    /// @notice Get the cooldown period for rate updates
+    /// @return Cooldown period in seconds
+    /// @dev New fee rates take effect after this cooldown period
     function cooldown() public view returns (uint256) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
         return $.cooldown;
     }
 
+    /// @notice Get the fee registry contract address
+    /// @return Fee registry address
     function feeRegistry() public view returns (address) {
         FeeManagerStorage storage $ = _getFeeManagerStorage();
         return $.feeRegistry;

@@ -110,6 +110,15 @@ abstract contract BaseCrosschainDepositAdapter is
 
     /**
      * @notice Public function callable only by self (for try/catch context)
+     * @param depositId Deposit ID for tracking
+     * @param vault Vault address to deposit into
+     * @param receiver Address to receive vault shares
+     * @param token Input token address
+     * @param amount Amount of tokens to deposit
+     * @param minAmountOut Minimum amount of vault asset expected (for zap path)
+     * @param zapCalls Array of calls for zap execution (empty for direct deposit)
+     * @return shares Amount of vault shares minted
+     * @dev This function is called internally via try/catch to handle failures gracefully
      */
     function executeStrategy(
         uint256 depositId,
@@ -245,39 +254,59 @@ abstract contract BaseCrosschainDepositAdapter is
 
     // ================== ADMIN ==================
 
+    /// @notice Set the zap executor contract address
+    /// @param _executor Address of the ZapExecutor contract
     function setZapExecutor(address _executor) external onlyOwner {
         zapExecutor = ZapExecutor(_executor);
     }
 
+    /// @notice Set the deposit queue contract address
+    /// @param _queue Address of the CrosschainDepositQueue contract
     function setDepositQueue(address _queue) external onlyOwner {
         depositQueue = _queue;
     }
 
+    /// @notice Enable or disable a vault for cross-chain deposits
+    /// @param vault Address of the vault
+    /// @param isActive True to enable, false to disable
     function setSupportedVault(address vault, bool isActive) external onlyOwner {
         supportedVaults[vault] = isActive;
     }
     
+    /// @notice Grant operator role to an address
+    /// @param operator Address to grant operator role to
     function setOperator(address operator) external onlyOwner {
         grantRole(OPERATOR_ROLE, operator);
     }
     
+    /// @notice Revoke operator role from an address
+    /// @param operator Address to revoke operator role from
     function removeOperator(address operator) external onlyOwner {
         revokeRole(OPERATOR_ROLE, operator);
     }
 
+    /// @notice Pause the adapter (prevents new deposits)
     function pause() external onlyOwnerOrOperator {
         _pause();
     }
 
+    /// @notice Unpause the adapter (allows new deposits)
     function unpause() external onlyOwnerOrOperator {
         _unpause();
     }
     
+    /// @notice Emergency recovery function to transfer tokens or native currency
+    /// @param token Token address (address(0) for native currency)
+    /// @param to Recipient address
+    /// @param amount Amount to transfer
     function emergencyRecover(address token, address to, uint256 amount) external onlyOwner {
         if (token == address(0)) payable(to).transfer(amount);
         else IERC20(token).safeTransfer(to, amount);
     }
 
+    /// @notice Transfer ownership and update roles
+    /// @param newOwner New owner address
+    /// @dev Transfers ownership and grants/revokes admin and operator roles accordingly
     function transferOwnership(address newOwner) public override onlyOwner {
         address oldOwner = owner();
         if (newOwner == oldOwner) return;
@@ -294,14 +323,23 @@ abstract contract BaseCrosschainDepositAdapter is
 
     // ================== VIEW ==================
     
+    /// @notice Get deposit record by deposit ID
+    /// @param depositId Deposit ID to query
+    /// @return Deposit record containing all deposit information
     function getDepositRecord(uint256 depositId) external view returns (DepositRecord memory) {
         return depositRecords[depositId];
     }
     
+    /// @notice Get all deposit IDs for a user
+    /// @param user User address to query
+    /// @return Array of deposit IDs for the user
     function getUserDepositIds(address user) external view returns (uint256[] memory) {
         return userDepositIds[user];
     }
     
+    /// @notice Check if a vault is supported for cross-chain deposits
+    /// @param vault Vault address to check
+    /// @return True if vault is supported, false otherwise
     function isVaultSupported(address vault) external view returns (bool) {
         return supportedVaults[vault];
     }
