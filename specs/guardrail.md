@@ -17,25 +17,26 @@ permissions) but adapted to Elitra's **cross-chain, bridge-agnostic** architectu
 
 ### Guardrails in the Current System
 
-The current Elitra system focuses guardrails primarily on **vault strategy operations**:
+The current Elitra system focuses guardrails primarily on **vault strategy operations** via `manageBatchWithDelta()`:
 
 ```mermaid
 flowchart TB
     subgraph Vault["ElitraVault"]
-        subgraph Manage["manage(Call[] calls)"]
+        subgraph Manage["manageBatchWithDelta(Call[] calls, int256 externalDelta)"]
             Ops["Strategy Operator executes vault operations:\n- Stake/unstake to yield protocols\n- Claim rewards\n- Swap tokens\n- Rebalance allocations"]
         end
-        Guards["Guardrails enforced:\n- Target whitelist (YEI, Takara, DEX, etc.)\n- Function whitelist (stake, swap, etc.)\n- Protocol allocation limits (max % per protocol)\n- Loss tolerance (max acceptable loss)\n- Notional limits (max operation size)\n- Slippage protection\n- Rate limiting\n- TVL caps"]
+        Guards["Guardrails enforced:\n- Guard-per-target validation\n- Optional trusted-target allowlist\n- Per-guard parameter checks"]
     end
 ```
 
-**Primary Focus: Vault Strategy Operations via manage()**
+**Primary Focus: Vault Strategy Operations via manageBatchWithDelta()**
 
-The `manage()` function is the most powerful operation in the vault, allowing strategy operators to execute arbitrary
+The `manageBatchWithDelta()` function is the most powerful operation in the vault, allowing strategy operators to execute arbitrary
 operations with vault assets. All guardrails are designed to constrain this function while maintaining flexibility for
 off-chain strategy logic.
 
-_Note: Cross-chain deposit guardrails (DepositHelper, MultichainAdapter) will be added in a future iteration._
+Cross-chain deposits are guarded by a vault allowlist in adapters (`supportedVaults`), optional zap execution via
+`ZapExecutor` with a `minAmountOut` check, and a failure queue for recovery.
 
 ---
 
@@ -45,8 +46,8 @@ _Note: Cross-chain deposit guardrails (DepositHelper, MultichainAdapter) will be
 
 - `ElitraVault` is responsible for:
   - ERC-4626 accounting (assets, shares, conversions).
-  - Enforcing **vault-level limits** on deposits/withdrawals.
-  - Exposing state needed for risk monitoring.
+  - Enforcing auth/pausing and hook-driven redemption + balance updates.
+  - Exposing state needed for risk monitoring (PPS, balances, pending redemptions/fees).
 - It is **not** responsible for complex strategy logic; that is driven off-chain and executed via controlled on-chain
   entry points (e.g., zaps, rebalances).
 
@@ -54,7 +55,8 @@ _Note: Cross-chain deposit guardrails (DepositHelper, MultichainAdapter) will be
 
 - Strategy logic (when to rebalance, what routes to use, which DEX/protocol) is off-chain.
 - Contracts act as a **risk engine**:
-  - Enforce caps, whitelists, and slippage bounds.
+  - Enforce guard-per-target validation and optional trusted-target allowlist.
+  - Enforce zap slippage via `minAmountOut` in adapters.
   - Reject any transaction that violates configured constraints, regardless of who submits it.
 
 ### P3. Explicit Roles & Separation of Duties
@@ -71,10 +73,9 @@ _Note: Cross-chain deposit guardrails (DepositHelper, MultichainAdapter) will be
 
 ## Core Concepts
 
-### 1. Vault-Level Risk Configuration
+### 1. Vault-Level Risk Configuration (Future / Not Implemented)
 
-Each `ElitraVault` is associated with a **vault-level risk configuration** that governs how much value it can hold and
-how flows are bounded.
+This section describes a proposed vault-level risk configuration. It is **not implemented** in the current contracts.
 
 #### 1.1. Example RiskConfig Struct
 
@@ -108,9 +109,9 @@ For any vault:
 
 ---
 
-### 2. Strategy Guardrails via manage()
+### 2. Strategy Guardrails via manageBatchWithDelta()
 
-The `manage()` function is the core operation that needs comprehensive guardrails. It uses **generic call sequences**
+The `manageBatchWithDelta()` function is the core operation that needs comprehensive guardrails. It uses **generic call sequences**
 (`Call[]`) to execute strategy operations with vault assets.
 
 #### 2.1. Call Type
@@ -128,12 +129,14 @@ struct Call {
 This flexible structure allows strategy operators to interact with any protocol, but is tightly constrained by
 guardrails.
 
-#### 2.2. StrategyRiskConfig
+#### 2.2. StrategyRiskConfig (Future / Not Implemented)
+
+This section describes a proposed strategy risk configuration. It is **not implemented** in the current contracts.
 
 ```solidity
 struct StrategyRiskConfig {
     // Notional limits
-    uint256 maxStrategyNotional;        // Max total value in single manage() call
+    uint256 maxStrategyNotional;        // Max total value in single manageBatchWithDelta() call
 
     // Per-protocol allocation limits (as basis points of TVL)
     mapping(address => uint16) maxProtocolAllocationBps;  // e.g., 5000 = 50% max in one protocol
@@ -145,64 +148,17 @@ struct StrategyRiskConfig {
     uint16 maxStrategySlippageBps;      // e.g., 100 = 1% max slippage
 
     // Time-based throttling
-    uint64 minSecondsBetweenManage;     // Min time between manage() calls
+    uint64 minSecondsBetweenManage;     // Min time between manageBatchWithDelta() calls
     uint64 minSecondsBetweenLargeManage; // For operations > largeManageThreshold
     uint256 largeManageThreshold;       // Definition of "large" operation
 }
 ```
 
-#### 2.3. Whitelisted Targets & Functions
+#### 2.3. Target Validation (Current)
 
-To prevent arbitrary external calls, the vault maintains **two-layer whitelisting**:
-
-**Target Whitelist:**
-
-```solidity
-// Target contracts (protocols)
-mapping(address => bool) public isAllowedStrategyTarget;
-```
-
-Typical whitelisted targets:
-
-- Yield protocols (e.g., YEI Protocol, Takara Protocol, Nectra)
-- DEX routers (e.g., SEI DEX, Uniswap-like DEXs)
-- Token wrappers (e.g., WSEI)
-
-**Function Selector Whitelist:**
-
-```solidity
-// Target + function selector (first 4 bytes of calldata)
-mapping(address => mapping(bytes4 => bool)) public isAllowedStrategyFunction;
-```
-
-Examples of allowed functions:
-
-- YEI Protocol: `stake(uint256)`, `unstake(uint256)`, `claim()`
-- Takara Protocol: `deposit(uint256)`, `withdraw(uint256)`
-- DEX: `swap(...)`, `addLiquidity(...)`, `removeLiquidity(...)`
-
-Examples of **NOT** allowed functions:
-
-- `transferOwnership(address)` - Security risk
-- `selfdestruct()` - Security risk
-- `delegatecall(...)` - Security risk
-- Any governance or admin functions
-
-**Validation:**
-
-```solidity
-function _validateStrategyCall(Call memory call) internal view {
-    // Check target whitelist
-    require(isAllowedStrategyTarget[call.target], "Strategy target not allowed");
-
-    // Check function selector whitelist (first 4 bytes of data)
-    bytes4 selector = bytes4(call.data);
-    require(
-        isAllowedStrategyFunction[call.target][selector],
-        "Strategy function not allowed"
-    );
-}
-```
+To prevent arbitrary external calls, the vault relies on **guard-per-target validation** plus an optional
+**trusted-target allowlist** in `VaultBase`. There is no vault-level selector whitelist in the current contracts;
+per-target rules live inside guard contracts.
 
 ---
 
@@ -213,10 +169,10 @@ guardrails:
 
 #### 3.1. LP (Liquidity Provider)
 
-- Anyone depositing into `ElitraVault` or via the multichain deposit path.
+- Anyone depositing into `ElitraVault` or via cross-chain adapters.
 - No privileged permissions; constrained by:
-  - Vault-level risk config.
-  - Bridge/adapters’ safety checks.
+  - Vault hook checks (NAV freshness, redemption hook decisions).
+  - Adapter allowlists and zap slippage checks.
 
 #### 3.2. Strategy Operator / Bot
 
@@ -224,16 +180,15 @@ guardrails:
   - Trigger zaps, rebalances, or other maintenance operations.
   - Interact with adapters and vaults in ways normal users may not (e.g., batch operations).
 - Still fully constrained by **all guardrails**:
-  - Cannot select non-whitelisted targets.
-  - Cannot bypass notional/slippage limits.
-  - Cannot exceed TVL or flow caps.
+  - Cannot select non-guarded targets unless explicitly trusted.
+  - Must pass guard validation for each target call.
 
 #### 3.3. Risk Governance / Admin
 
 - Addresses authorized to:
-  - Update `VaultRiskConfig` and `AdapterRiskConfig`.
-  - Manage whitelists/blacklists (zap targets, supported vaults, bridges).
-  - Configure global parameters for risk and safety.
+  - Manage guards and trusted targets.
+  - Manage adapter allowlists (supported vaults) and queue/adapters.
+  - Configure hooks, fees, and pause/unpause.
 
 Changes by this role MUST emit detailed events (see §5).
 
@@ -248,6 +203,9 @@ Changes by this role MUST emit detailed events (see §5).
 ---
 
 ### 4. Execution-Time Checks
+
+**Status**: The checks described in this section are **future / not implemented** in the current contracts. Current
+guardrails are documented in sections 1–3.
 
 Every vault operation enforces guardrails **at runtime**.
 
@@ -274,16 +232,16 @@ function _beforeDeposit(address receiver, uint256 assets) internal view {
 
 On any withdrawal, similar checks apply using `maxSingleWithdraw` and optional rate limits.
 
-#### 4.2. Strategy Operations via `manage()` Function
+#### 4.2. Strategy Operations via `manageBatchWithDelta()` Function
 
-The vault exposes a `manage(Call[] memory calls)` function that allows strategy operators to execute arbitrary
+The vault exposes a `manageBatchWithDelta(Call[] memory calls, int256 externalDelta)` function that allows strategy operators to execute arbitrary
 operations with vault assets. This is the most powerful function and requires the most comprehensive guardrails.
 
 **Strategy Execution Flow:**
 
 ```mermaid
 flowchart TD
-    Start[Strategy Operator calls<br/>vault.manage calls] --> Auth{Check Role}
+    Start[Strategy Operator calls<br/>vault.manageBatchWithDelta] --> Auth{Check Role}
     Auth -->|Not Operator| RevertAuth[Revert: Unauthorized]
     Auth -->|Is Operator| CheckPause{Vault Paused?}
 
@@ -341,7 +299,7 @@ flowchart TD
 ```solidity
 struct StrategyRiskConfig {
     // Notional limits
-    uint256 maxStrategyNotional;        // Max total value in single manage() call
+    uint256 maxStrategyNotional;        // Max total value in single manageBatchWithDelta() call
 
     // Per-protocol allocation limits (as basis points of TVL)
     mapping(address => uint16) maxProtocolAllocationBps;  // e.g., 5000 = 50% max in one protocol
@@ -353,7 +311,7 @@ struct StrategyRiskConfig {
     uint16 maxStrategySlippageBps;      // e.g., 100 = 1% max slippage
 
     // Time-based throttling
-    uint64 minSecondsBetweenManage;     // Min time between manage() calls
+    uint64 minSecondsBetweenManage;     // Min time between manageBatchWithDelta() calls
     uint64 minSecondsBetweenLargeManage; // For operations > largeManageThreshold
     uint256 largeManageThreshold;       // Definition of "large" operation
 }
@@ -610,7 +568,7 @@ All configuration changes emit events for off-chain monitoring and dashboards.
 3. Vault mints shares to receiver
 4. Emit `DepositProcessed(vault, receiver, assets, shares)`
 
-### 6.3. Strategy Execution via manage()
+### 6.3. Strategy Execution via manageBatchWithDelta()
 
 1. Strategy operator (off-chain bot) determines rebalance/strategy action needed
 2. Operator calls `vault.manage(Call[] calls)` with strategy operations

@@ -248,8 +248,6 @@ contract FeeManagerTest is Test {
         vault.deposit(depositAmount, alice);
         vm.stopPrank();
 
-        uint256 initialShares = vault.totalSupply();
-
         // Warp 1 month (30 days)
         skip(30 days);
 
@@ -495,7 +493,7 @@ contract FeeManagerTest is Test {
         uint256 redeemAmount = 500e6; // Redeem half of shares
 
         // Get preview BEFORE requestRedeem (which will call takeFees internally)
-        uint256 expectedAssets = vault.previewRedeem(redeemAmount);
+        vault.previewRedeem(redeemAmount);
 
         // requestRedeem will call takeFees internally, changing the share price
         // So we need to get a fresh preview after that
@@ -690,7 +688,6 @@ contract FeeManagerTest is Test {
 
         uint256 aliceShares = vault.balanceOf(alice);
         uint256 feeReceiverShares = vault.balanceOf(feeReceiver);
-        uint256 totalSupply = vault.totalSupply();
 
         assertEq(aliceShares, aliceDeposit, "Alice shares unchanged");
         assertGt(feeReceiverShares, 0, "Fees accrued");

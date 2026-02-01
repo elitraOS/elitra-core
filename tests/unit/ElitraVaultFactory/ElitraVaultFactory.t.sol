@@ -75,7 +75,7 @@ contract ElitraVaultFactoryTest is Test {
         asset.approve(address(factory), INITIAL_SEED);
 
         // Act
-        (address payable vault, uint256 shares) = factory.deployAndSeed(
+        (address payable vault, ) = factory.deployAndSeed(
             asset,
             owner,
             address(feeRegistry),

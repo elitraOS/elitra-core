@@ -7,10 +7,10 @@ import { Compatible } from "../../src/vault/Compatible.sol";
 /// @notice Mock implementation of Compatible to test the abstract contract
 contract CompatibleMock is Compatible {
     function exposedOnERC721Received(
-        address operator,
-        address from,
-        uint256 tokenId,
-        bytes calldata data
+        address /* operator */,
+        address /* from */,
+        uint256 /* tokenId */,
+        bytes calldata /* data */
     ) external returns (bytes4) {
         return this.onERC721Received.selector;
     }

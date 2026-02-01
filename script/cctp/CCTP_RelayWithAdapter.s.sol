@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { BaseScript } from "../Base.s.sol";
 import { console } from "forge-std/console.sol";
-import { CCTPCrosschainDepositAdapter } from "src/adapters/cctp/CCTPCrosschainDepositAdapter.sol";
+import { CCTPCrosschainDepositAdapter } from "src/crosschain-adapters/cctp/CCTPCrosschainDepositAdapter.sol";
 
 /**
  * @title CCTP_RelayWithAdapter

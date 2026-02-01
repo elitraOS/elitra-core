@@ -5,9 +5,20 @@ out = "out"
 libs = ["lib"]
 solc_version = "0.8.28"
 via_ir = true
-# Ignore compiler warning 2018: Function state mutability can be restricted to view
-# Some functions must match interface signatures that require non-view even if they only revert
-ignored_error_codes = [2018]
+optimizer = true
+optimizer_runs = 200
+# Ignore compiler warnings:
+# 2018: Function state mutability can be restricted to view (some functions must match interface signatures)
+# 5574: Contract code size exceeds limit (only affects scripts, not production contracts)
+# 3860: Contract initcode size exceeds limit (only affects test contracts, not production)
+ignored_error_codes = [2018, 5574, 3860]
+
+# Test profile: more aggressive optimizer settings to reduce contract size
+[profile.test]
+optimizer = true
+optimizer_runs = 100  # Lower runs = smaller bytecode (better for tests)
+# Ignore contract size warnings for tests (they don't deploy to mainnet)
+ignored_error_codes = [2018, 5574, 3860]
 
 # See more config options https://book.getfoundry.sh/reference/config.html
 

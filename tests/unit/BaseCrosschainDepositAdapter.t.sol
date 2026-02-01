@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
-import { BaseCrosschainDepositAdapter } from "../../src/adapters/BaseCrosschainDepositAdapter.sol";
+import { BaseCrosschainDepositAdapter } from "../../src/crosschain-adapters/BaseCrosschainDepositAdapter.sol";
 import { ICrosschainDepositAdapter } from "../../src/interfaces/ICrosschainDepositAdapter.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 

@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
-import { ZapExecutor } from "../../src/adapters/ZapExecutor.sol";
+import { ZapExecutor } from "../../src/crosschain-adapters/ZapExecutor.sol";
 import { ElitraVault } from "../../src/ElitraVault.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 import { ManualBalanceUpdateHook } from "../../src/hooks/ManualBalanceUpdateHook.sol";

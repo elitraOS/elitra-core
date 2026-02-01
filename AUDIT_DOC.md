@@ -1,15 +1,11 @@
 # Elitra Audit Doc
 
-Last updated: 2026-02-01
-
-## ELI5
-
 Elitra is a smart vault that lets people put tokens in one place and earn yield, even when the yield happens on other chains. Bots move the money to approved strategies, and the vault only allows safe, pre-approved actions. If anything looks risky, the vault can pause or queue withdrawals so funds are protected.
 
 ## High-Level Overview
 
 - **Main idea**: ERC-4626 vault on a hub chain (SEI) with controlled strategy execution and optional cross-chain deposits.
-- **Safety model**: `manage()` calls are guarded per target (fail-closed); swap/zap entrypoints are limited to approved adapters.
+- **Safety model**: strategy calls are guarded per target with an optional trusted-target allowlist; swap/zap entrypoints are limited to approved adapters.
 - **Oracle updates**: balance updates adjust PPS and can auto-pause if changes exceed thresholds.
 - **Redemptions**: instant if liquid; otherwise queued and later fulfilled.
 - **Cross-chain deposits**: bridged funds arrive via adapters, can be zapped into vault assets, then deposited or queued on failure.
@@ -17,7 +13,7 @@ Elitra is a smart vault that lets people put tokens in one place and earn yield,
 ## Actors (Roles + Capabilities)
 
 - **LP / Depositor**: deposits and redeems vault shares; no privileged rights.
-- **Strategy Operator / Bot**: authorized to call `manage()`/`manageBatch()` to execute whitelisted strategy actions.
+- **Strategy Operator / Bot**: authorized to call `manageBatchWithDelta()` to execute guarded strategy actions.
 - **Admin / Governance**: configures vault risk params, fees, guards, whitelists; can pause/unpause.
 - **Guardian (optional)**: emergency pause actions only.
 - **Oracle / Updater**: posts balance updates (hooked into PPS logic).
@@ -31,22 +27,23 @@ Elitra is a smart vault that lets people put tokens in one place and earn yield,
 
 - **Vault core**:
   - `src/ElitraVault.sol`: ERC-4626 vault, fees, redemptions, oracle updates.
-  - `src/vault/VaultBase.sol`: auth + guarded `manage()` execution.
+  - `src/vault/VaultBase.sol`: auth + guarded batch execution (used by `manageBatchWithDelta`).
   - `src/vault/AuthUpgradeable.sol`, `src/vault/Compatible.sol`: base utilities.
   - `src/ElitraVaultFactory.sol`: deploys vaults.
 - **Hooks**:
-  - `src/hooks/ManualBalanceUpdateHook.sol`
-  - `src/hooks/HybridRedemptionHook.sol`
+  - `src/hooks/ManualBalanceUpdateHook.sol`: updates the vault's price per share based on external protocol balances.
+  - `src/hooks/HybridRedemptionHook.sol`: decides whether to redeem shares instantly or queue them for later fulfillment.
 - **Fees**:
   - `src/fees/FeeManager.sol`: tracks pending asset fees and mints fee shares.
   - `src/fees/FeeRegistry.sol`: stores protocol fee rate and receiver.
 - **Cross-chain adapters**:
-  - `src/adapters/BaseCrosschainDepositAdapter.sol`: base receiver + deposit flow.
-  - `src/adapters/CrosschainDepositQueue.sol`: records and resolves failed deposits.
-  - `src/adapters/cctp/CCTPCrosschainDepositAdapter.sol`: CCTP-specific adapter.
+  - `src/crosschain-adapters/BaseCrosschainDepositAdapter.sol`: base receiver + deposit flow.
+  - `src/crosschain-adapters/CrosschainDepositQueue.sol`: records and resolves failed deposits.
+  - `src/crosschain-adapters/cctp/CCTPCrosschainDepositAdapter.sol`: CCTP-specific adapter.
+  - `src/crosschain-adapters/layerzero/LayerZeroCrosschainDepositAdapter.sol`: LayerZero-specific adapter.
 - **Zap / swap helpers**:
-  - `src/adapters/ZapExecutor.sol`
-  - `src/adapters/Api3SwapAdapter.sol`: swap adapter used by zaps (SEI).
+  - `src/crosschain-adapters/ZapExecutor.sol`: cross-chain zaps without price checks.
+  - `src/adapters/Api3SwapAdapter.sol`: API3-validated swap adapter for vault-managed swaps (SEI).
 - **Guards (contract-level call validators)**:
   - `src/guards/base/TokenGuard.sol`
   - `src/guards/base/WNativeGuard.sol`
@@ -60,7 +57,7 @@ Elitra is a smart vault that lets people put tokens in one place and earn yield,
 ## Component Relationships (How Things Connect)
 
 - `ElitraVault` is the user-facing ERC-4626 vault. It delegates auth and guarded execution to `VaultBase`.
-- `VaultBase` enforces role-based access and target guards for strategy execution (`manage`/`manageBatch`).
+- `VaultBase` enforces role-based access plus guard/trusted-target validation for strategy execution.
 - `FeeManager` and `FeeRegistry` control asset-based and share-based fees, and the protocol fee split.
 - Hooks plug into the vault:
   - **Balance update hook** updates PPS based on external balances and can pause the vault on large changes.
@@ -84,12 +81,13 @@ Elitra is a smart vault that lets people put tokens in one place and earn yield,
    - **Queued**: shares are escrowed and later fulfilled by an operator.
 3. Operator fulfills queued withdrawals after unwinding strategies.
 
-### 3) Strategy execution (`manage`/`manageBatch`)
+### 3) Strategy execution (`manageBatchWithDelta`)
 
-1. Operator submits call(s) to `VaultBase`.
-2. Vault verifies caller role and that each target has an assigned guard.
-3. Guard validates selector and parameters; invalid calls revert (fail-closed).
+1. Operator submits call(s) to `ElitraVault.manageBatchWithDelta`.
+2. Vault verifies caller role and validates each target via guard or trusted-target allowlist.
+3. Guard validates selector and parameters; invalid calls revert.
 4. Approved calls execute against allowed protocols.
+5. Vault applies the explicit `externalDelta` and recomputes PPS via the balance update hook.
 
 ### 4) Oracle balance updates
 
@@ -129,40 +127,6 @@ Elitra is a smart vault that lets people put tokens in one place and earn yield,
 - Contracts are designed to support upgradeable deployments; confirm proxy usage and admin roles per deployment.
 - Ensure guard assignments and adapter whitelists are set before any strategy operations.
 
-## Audit Scope (must match mainnet deploy set)
-
-Commit hash (freeze 3 days pre‑audit): **TBD**
-
-In scope (current code units used in deployed bytecode; update to exact mainnet deploy list):
-
-- `src/ElitraVault.sol`
-- `src/vault/VaultBase.sol`
-- `src/vault/AuthUpgradeable.sol`
-- `src/vault/Compatible.sol`
-- `src/ElitraVaultFactory.sol`
-- `src/hooks/ManualBalanceUpdateHook.sol`
-- `src/hooks/HybridRedemptionHook.sol`
-- `src/fees/FeeManager.sol`
-- `src/fees/FeeRegistry.sol`
-- `src/adapters/BaseCrosschainDepositAdapter.sol`
-- `src/adapters/CrosschainDepositQueue.sol`
-- `src/adapters/cctp/CCTPCrosschainDepositAdapter.sol`
-- `src/adapters/ZapExecutor.sol`
-- `src/adapters/Api3SwapAdapter.sol`
-- `src/guards/base/TokenGuard.sol`
-- `src/guards/base/WNativeGuard.sol`
-- `src/guards/sei/YeiPoolGuard.sol`
-- `src/guards/sei/YeiIncentivesGuard.sol`
-- `src/guards/sei/TakaraPoolGuard.sol`
-- `src/guards/sei/TakaraControllerGuard.sol`
-- `src/guards/sei/MerklDistributorGuard.sol`
-- `src/guards/sei/MorphoVaultGuard.sol`
-
-Out of scope (interfaces/libraries only, unless explicitly requested):
-
-- `src/interfaces/*`
-- `src/libraries/Errors.sol`
-
 ## Build / Compile
 
 Prereqs:
@@ -188,7 +152,9 @@ Known compiler warnings/errors: **TBD** (run `forge build` and document any).
 
 ## Detailed Specs (for auditors)
 
-- `specs/crosschain.md`
-- `specs/guardrail.md`
-- `specs/manage-security.md`
-- `specs/fees.md`
+- [specs/crosschain.md](specs/crosschain.md)
+- [specs/guardrail.md](specs/guardrail.md)
+- [specs/manage-security.md](specs/manage-security.md)
+- [specs/fees.md](specs/fees.md)
+- [specs/oracle.md](specs/oracle.md)
+- [specs/swap-adapter.md](specs/swap-adapter.md)

@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
-import { CCTPCrosschainDepositAdapter } from "../../../src/adapters/cctp/CCTPCrosschainDepositAdapter.sol";
+import { CCTPCrosschainDepositAdapter } from "../../../src/crosschain-adapters/cctp/CCTPCrosschainDepositAdapter.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**

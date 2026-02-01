@@ -2,31 +2,30 @@
 
 ## Overview
 
-The `manage()` function in VaultBase provides a controlled mechanism for authorized operators to execute vault strategy
+The `manageBatchWithDelta()` function in ElitraVault provides a controlled mechanism for authorized operators to execute vault strategy
 operations. This document details how the **target-based guard system** ensures security by validating all function
 calls against protocol-specific rules.
 
-**Note**: The `manageBatch()` function uses the same security model as `manage()`, applying guard validation to each
-call in the batch. The principles and guarantees described here apply to both functions.
+**Note**: `VaultBase` implements `manageBatch()`, but `ElitraVault` disables it and requires
+`manageBatchWithDelta()` so an explicit external balance delta is always provided.
 
 ## Core Concepts
 
 ### The Manage Function
 
-VaultBase exposes the `manage()` function for executing vault operations:
+ElitraVault exposes the `manageBatchWithDelta()` function for executing vault operations:
 
 ```solidity
-function manage(address target, bytes calldata data, uint256 value)
+function manageBatchWithDelta(Call[] calldata calls, int256 externalDelta)
     external
     requiresAuth
-    returns (bytes memory result)
+    payable
 ```
 
 **Parameters**:
 
-- `target` - The target contract address to call
-- `data` - Function calldata (selector + encoded arguments)
-- `value` - Amount of ETH to send with the call
+- `calls` - Array of target/value/calldata operations
+- `externalDelta` - Explicit aggregate balance delta from external strategy operations
 
 ### Purpose
 
@@ -70,14 +69,13 @@ graph TB
 
 ### Principle 1: Defense at the Boundary & Mandatory Guards
 
-Elitra employs a **guard-per-target architecture** that enforces a strict **fail-closed security model**. Rather than
+Elitra employs a **guard-per-target architecture** with an optional **trusted-target allowlist**. Rather than
 trusting operators or implementing complex allowlists at the vault level, every target contract must have an explicitly
-assigned guard.
+assigned guard **or** be marked as trusted.
 
 This approach ensures:
 
-1. **Fail-Closed Security**: If no guard exists for a target, the transaction reverts immediately. There is no "default
-   allow" behavior.
+1. **Fail-Closed by Default**: If no guard exists for a target and it is not trusted, the transaction reverts.
 2. **Defense in Depth**: Even authorized operators cannot interact with arbitrary contracts or call unauthorized
    functions.
 3. **Component-Based Validation**: Validation logic is offloaded to stateless guard contracts, keeping the vault core
@@ -91,16 +89,19 @@ graph TD
 
     subgraph Vault["Vault Layer (Defense Boundary)"]
         direction TB
-        M[manage function]
+        M[manageBatchWithDelta]
         AUTH{Authorized?}
         LOOKUP[Lookup Guard]
         EXIST{Guard Exists?}
+        TRUST{Trusted Target?}
 
         M --> AUTH
         AUTH -->|No| REV_AUTH[Revert: Unauthorized]
         AUTH -->|Yes| LOOKUP
         LOOKUP --> EXIST
-        EXIST -->|No| REV_GUARD[Revert: No Guard - Fail-Closed Security]
+        EXIST -->|No| TRUST
+        TRUST -->|No| REV_GUARD[Revert: No Guard/Not Trusted]
+        TRUST -->|Yes| EXEC
     end
 
     subgraph Guard["Guard Layer (Validation)"]
@@ -119,7 +120,7 @@ graph TD
         EXT[External Contract]
     end
 
-    OP -->|1. Call manage| M
+    OP -->|1. Call manageBatchWithDelta| M
     EXIST -->|Yes| VAL
     P2 -->|True| EXEC
     EXEC -->|functionCallWithValue| EXT
@@ -137,6 +138,7 @@ graph TD
 graph TB
     subgraph VaultBase
         VM[guards mapping]
+        TT[trustedTargets set]
     end
 
     subgraph "Target → Guard Mapping"
@@ -158,6 +160,7 @@ graph TB
     VM -.->|maps| T3
     VM -.->|maps| T4
     VM -.->|maps| T5
+    TT -.->|allowlist| T1
 
     T1 -->|uses| G1
     T2 -->|uses| G2
@@ -310,7 +313,7 @@ function removeGuard(address target)
 }
 ```
 
-**Important**: Removing a guard effectively blacklists that target, as manage() calls will revert without a guard.
+**Important**: Removing a guard effectively blacklists that target unless it is marked as trusted.
 
 ---
 
@@ -325,7 +328,7 @@ sequenceDiagram
     participant Guard
     participant Target
 
-    Operator->>VaultBase: manage(target, data, value)
+    Operator->>VaultBase: manageBatchWithDelta(calls, externalDelta)
 
     VaultBase->>VaultBase: Check requiresAuth
     alt Not authorized
@@ -333,28 +336,32 @@ sequenceDiagram
     end
 
     VaultBase->>VaultBase: Lookup guards[target]
-    alt No guard exists
+    alt Guard exists
+        VaultBase->>Guard: validate(msg.sender, data, value)
+        Guard->>Guard: Parse function selector
+        Guard->>Guard: Validate parameters
+        Guard->>Guard: Check protocol rules
+
+        alt Validation failed
+            Guard-->>VaultBase: return false
+            VaultBase-->>Operator: Revert: TransactionValidationFailed
+        end
+
+        Guard-->>VaultBase: return true
+        VaultBase->>Target: functionCallWithValue(data, value)
+        Target-->>VaultBase: result
+        VaultBase-->>Operator: return result
+    else Trusted target
+        VaultBase->>Target: functionCallWithValue(data, value)
+        Target-->>VaultBase: result
+        VaultBase-->>Operator: return result
+    else No guard and not trusted
         VaultBase-->>Operator: Revert: TransactionValidationFailed
     end
-
-    VaultBase->>Guard: validate(msg.sender, data, value)
-    Guard->>Guard: Parse function selector
-    Guard->>Guard: Validate parameters
-    Guard->>Guard: Check protocol rules
-
-    alt Validation failed
-        Guard-->>VaultBase: return false
-        VaultBase-->>Operator: Revert: TransactionValidationFailed
-    end
-
-    Guard-->>VaultBase: return true
-    VaultBase->>Target: functionCallWithValue(data, value)
-    Target-->>VaultBase: result
-    VaultBase-->>Operator: return result
 ```
 
-**Note on manageBatch()**: The `manageBatch()` function applies this same validation flow to each call in sequence. All
-calls must pass guard validation before any are executed.
+**Note on manageBatchWithDelta()**: The `manageBatchWithDelta()` function applies this same validation flow to each call in sequence.
+Calls execute one-by-one; a later failure will revert that call but prior calls already executed in the same transaction.
 
 ---
 
@@ -511,7 +518,7 @@ contract YieldProtocolGuard is ITransactionGuard {
 | Call to dangerous function  | Guard checks selector → Returns false                     |
 | Excessive approval          | TokenGuard validates spender → Rejects unauthorized       |
 | Parameter injection         | Guard parses and validates params → Rejects invalid       |
-| Reentrancy via manage()     | Guards are view/pure → No state changes during validation |
+| Reentrancy via manageBatchWithDelta()     | Guards are view/pure → No state changes during validation |
 | Front-running guard changes | Guard updates emit events → Transparency & monitoring     |
 
 ### Trust Assumptions
@@ -555,7 +562,7 @@ contract YieldProtocolGuard is ITransactionGuard {
 4. **Emergency Override**: Guardian role to bypass guards in emergencies
 5. **Guard Composition**: Combine multiple guards with AND/OR logic
 6. **Gas Limit Guards**: Enforce gas limits per operation
-7. **Rate Limiting**: Time-based restrictions on manage() calls
+7. **Rate Limiting**: Time-based restrictions on manageBatchWithDelta() calls
 8. **Value Tracking**: Track total value moved per target per period
 
 ### Integration with Other Guardrails
