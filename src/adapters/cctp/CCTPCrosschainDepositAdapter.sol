@@ -16,20 +16,25 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
     // ================== STATE VARIABLES ==================
 
     /// @notice CCTP V2 MessageTransmitter contract for relaying cross-chain messages
+    // Circle CCTP message transmitter used to mint USDC on destination.
     IMessageTransmitterV2 public messageTransmitter;
 
     /// @notice USDC token address on this chain (typically native USDC)
+    // USDC token on this chain (received from CCTP mint).
     address public usdc;
 
     /// @notice Tracks processed message hashes to prevent replay attacks
+    // Replay protection for CCTP messages.
     mapping(bytes32 => bool) public processedMessages;
 
     // ================== CONSTANTS ==================
 
     /// @notice Supported CCTP message format version
+    // Supported CCTP message format version.
     uint32 public constant SUPPORTED_MESSAGE_VERSION = 1;
 
     /// @notice Supported CCTP message body version
+    // Supported CCTP message body version.
     uint32 public constant SUPPORTED_BODY_VERSION = 1;
 
     // ================== ERRORS ==================
@@ -77,11 +82,14 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
         address _queue,
         address _zapExecutor
     ) public initializer {
+        // Validate critical addresses to avoid misconfiguration.
         if (_messageTransmitter == address(0)) revert InvalidMessageTransmitter();
         if (_usdc == address(0)) revert InvalidUSDC();
 
+        // Initialize shared adapter state (roles, queue, zap).
         __BaseAdapter_init(_owner, _queue, _zapExecutor);
 
+        // Store CCTP config.
         messageTransmitter = IMessageTransmitterV2(_messageTransmitter);
         usdc = _usdc;
     }
@@ -90,51 +98,43 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
 
     /**
      * @notice Relays a CCTP message and executes the deposit hook
-     * @dev Called by relayers after receiving attestation from CCTP
      * @param message The CCTP burn message containing deposit details
      * @param attestation Signature attesting to the validity of the burn message
      * @return relaySuccess True if the message was successfully relayed
      * @return hookSuccess True if the deposit hook executed successfully
-     *
-     * @dev Process flow:
-     *      1. Calculate message hash and check replay protection
-     *      2. Mark message as processed (before external call for reentrancy safety)
-     *      3. Call CCTP MessageTransmitter to receive the attested message
-     *      4. Calculate USDC amount received via balance delta
-     *      5. Decode hook data from the message
-     *      6. Execute vault deposit via BaseCrosschainDepositAdapter logic
+     * @dev Validates message, receives USDC via CCTP, and deposits to vault
      */
     function relay(
         bytes calldata message,
         bytes calldata attestation
     ) external nonReentrant whenNotPaused returns (bool relaySuccess, bool hookSuccess) {
-        // Calculate message hash to prevent replay attacks
+        // Calculate message hash to prevent replay attacks.
         bytes32 messageHash = keccak256(message);
         if (processedMessages[messageHash]) revert MessageAlreadyProcessed();
 
-        // Mark as processed before external call (CEI pattern)
+        // Mark as processed before external call (CEI pattern).
         processedMessages[messageHash] = true;
 
-        // Get balance before relay to calculate received amount
+        // Snapshot balance to compute minted amount via delta.
         uint256 balanceBefore = IERC20(usdc).balanceOf(address(this));
 
-        // Relay message through CCTP MessageTransmitter (mints USDC to this contract)
+        // Relay message through CCTP MessageTransmitter (mints USDC here).
         relaySuccess = messageTransmitter.receiveMessage(message, attestation);
         if (!relaySuccess) revert RelayFailed();
 
-        // Calculate received amount using balance delta
+        // Calculate received amount using balance delta.
         uint256 balanceAfter = IERC20(usdc).balanceOf(address(this));
         uint256 amountReceived = balanceAfter - balanceBefore;
 
-        // Decode CCTP message parts to extract deposit parameters
+        // Decode CCTP message parts to extract deposit parameters.
         (uint32 sourceDomain, address mintRecipient, bytes memory hookData) = _decodeMessage(message);
 
         emit MessageRelayed(messageHash, sourceDomain, mintRecipient, amountReceived);
 
-        // If hook data exists, execute deposit via Base logic
-        // Hook data format: abi.encode(vault, receiver, minAmountOut, zapCalls)
+        // If hook data exists, execute deposit via Base logic.
+        // Hook data format: abi.encode(vault, receiver, minAmountOut, zapCalls).
         if (hookData.length > 0) {
-            // CCTP "sourceDomain" maps to "sourceId" in Base adapter
+            // CCTP "sourceDomain" maps to "sourceId" in Base adapter.
             _processReceivedFunds(mintRecipient, sourceDomain, usdc, amountReceived, messageHash, hookData);
             hookSuccess = true;
         } else {
@@ -157,7 +157,7 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
         uint256 minAmountOut,
         Call[] calldata zapCalls
     ) external pure returns (bytes memory) {
-        // HookData structure: abi.encode(vault, receiver, minAmountOut, zapCalls)
+        // HookData structure: abi.encode(vault, receiver, minAmountOut, zapCalls).
         return abi.encode(vault, receiver, minAmountOut, zapCalls);
     }
 
@@ -184,18 +184,18 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
     function _decodeMessage(
         bytes calldata message
     ) internal pure returns (uint32 sourceDomain, address mintRecipient, bytes memory hookData) {
-        // Extract source domain (bytes 4-8, formatted as uint32)
+        // Extract source domain (bytes 4-8, formatted as uint32).
         sourceDomain = uint32(bytes4(message[4:8]));
 
-        // Message body starts at offset 148 per CCTP V2 spec
+        // Message body starts at offset 148 per CCTP V2 spec.
         bytes calldata messageBody = message[148:];
 
-        // Extract mintRecipient from message body (offset 36-68)
+        // Extract mintRecipient from message body (offset 36-68).
         bytes32 recipientBytes32 = bytes32(messageBody[36:68]);
         mintRecipient = address(uint160(uint256(recipientBytes32)));
 
-        // Extract hookData if present (starts at offset 228 in body)
-        // Hook data is appended by the sender and contains vault deposit instructions
+        // Extract hookData if present (starts at offset 228 in body).
+        // Hook data is appended by the sender and contains vault deposit instructions.
         if (messageBody.length > 228) {
             hookData = messageBody[228:];
         }

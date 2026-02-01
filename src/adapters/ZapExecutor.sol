@@ -14,9 +14,13 @@ import { Call } from "../interfaces/IVaultBase.sol";
 contract ZapExecutor {
     using SafeERC20 for IERC20;
 
+    // Raised when any zap call fails.
     error ZapFailed();
+    // Raised when output is below caller-specified minAmountOut.
     error SlippageExceeded();
+    // Raised when zap produced no vault asset at all.
     error ZapProducedNoOutput();
+    // Raised when vault deposit mints zero shares.
     error DepositFailedNoShares();
 
     /**
@@ -38,30 +42,31 @@ contract ZapExecutor {
         uint256 minAmountOut,
         Call[] calldata zapCalls
     ) external returns (uint256 shares) {
-        // 1. Pull funds from Adapter
-        // (Adapter must have approved this contract beforehand)
+        // 1. Pull funds from Adapter.
+        // (Adapter must have approved this contract beforehand.)
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
 
-        // 2. Execute Zaps
+        // 2. Execute arbitrary zap calls (swaps, unwraps, etc.).
         for (uint256 i = 0; i < zapCalls.length; i++) {
             (bool success, ) = zapCalls[i].target.call{value: zapCalls[i].value}(zapCalls[i].data);
             if (!success) revert ZapFailed();
         }
 
-        // 3. Check Output
+        // 3. Check output amount in vault asset.
         address asset = IElitraVault(vault).asset();
         uint256 balance = IERC20(asset).balanceOf(address(this));
         
+        // Enforce slippage limit and non-zero output.
         if (balance < minAmountOut) revert SlippageExceeded();
         if (balance == 0) revert ZapProducedNoOutput();
 
-        // 4. Deposit to Vault
+        // 4. Deposit to vault and mint shares for receiver.
         IERC20(asset).forceApprove(vault, balance);
         shares = IElitraVault(vault).deposit(balance, receiver);
 
         if (shares == 0) revert DepositFailedNoShares();
 
-        // Sweep tokens 
+        // Sweep any leftover tokens/native to keep executor stateless.
         sweepToken(tokenIn);
         sweepNative();
     }
@@ -70,6 +75,7 @@ contract ZapExecutor {
     /// @param token Token address to sweep
     /// @dev Contract is designed to be stateless - allows anyone to sweep dust tokens
     function sweepToken(address token) public {
+        // Anyone can sweep dust since the contract should be stateless.
         if (IERC20(token).balanceOf(address(this)) == 0) return;
         IERC20(token).safeTransfer(msg.sender, IERC20(token).balanceOf(address(this)));
     }
@@ -77,8 +83,8 @@ contract ZapExecutor {
     /// @notice Sweep any remaining native currency from the contract
     /// @dev Contract is designed to be stateless - allows anyone to sweep dust native currency
     function sweepNative() public {
+        // Sweep any native dust (e.g., from swap refunds).
         if (address(this).balance == 0) return;
         payable(msg.sender).transfer(address(this).balance);
     }
 }
-

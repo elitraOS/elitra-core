@@ -27,18 +27,27 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     uint256 internal constant REQUEST_ID = 0;
 
     // Oracle state
+    // Hook that validates balance updates (e.g., PPS threshold checks).
     IBalanceUpdateHook public balanceUpdateHook;
+    // Aggregated balances reported from external strategies.
     uint256 public aggregatedUnderlyingBalances;
+    // Guard to prevent multiple updates in the same block.
     uint256 public lastBlockUpdated;
+    // Cached price per share from the last update.
     uint256 public lastPricePerShare;
 
     // NAV freshness state
-    uint256 public navFreshnessThreshold; // Maximum allowed time (in seconds) since last NAV update
-    uint256 public lastTimestampUpdated;  // Timestamp of last NAV update
+    // Maximum allowed time (in seconds) since last NAV update.
+    uint256 public navFreshnessThreshold;
+    // Timestamp of last NAV update.
+    uint256 public lastTimestampUpdated;
 
     // Redemption state
+    // Hook that decides redemption mode and amount.
     IRedemptionHook public redemptionHook;
+    // Receiver => pending queued assets.
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
+    // Total assets reserved for queued redemptions.
     uint256 public totalPendingAssets;
 
     // Fee state (moved to FeeManager storage)
@@ -62,14 +71,17 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         public
         initializer
     {
+        // Initialize upgradeable mixins and ERC4626 plumbing.
         __Context_init();
         __ERC20_init(_name, _symbol);
         __ERC4626_init(IERC20Upgradeable(address(_asset)));
         __VaultBase_init(_owner, _upgradeAdmin);
 
         // FeeManager (Lagoon-inspired): initialize with safe defaults (0 fees) and receivers set to owner.
+        // Initialize FeeManager with safe defaults (0 fees, no cooldown).
         __FeeManager_init(_owner, _feeRegistry, 0, 0, 0);
 
+        // Require non-zero adapters to avoid unusable vault.
         require(address(_balanceUpdateHook) != address(0), Errors.ZeroAddress());
         require(address(_redemptionHook) != address(0), Errors.ZeroAddress());
 
@@ -82,22 +94,22 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @notice Internal function to update vault balance and price per share
     /// @param newAggregatedBalance The new aggregated balance from external protocols
     function _updateBalance(uint256 newAggregatedBalance) internal {
-        // 1. Pull validation from balance update hook (read-only)
+        // 1. Pull validation from balance update hook (read-only).
         (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
             lastPricePerShare, totalSupply(), _netTotalAssets(newAggregatedBalance)
         );
 
-        // 2. Check if should pause
+        // 2. If hook signals out-of-bounds, pause the vault.
         if (!shouldContinue) {
             _pause();
             emit VaultPausedDueToThreshold(block.timestamp, lastPricePerShare, newPPS);
             return;
         }
 
-        // Emit the changes
+        // Emit the changes for off-chain indexers.
         emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
 
-        // Update own state
+        // Update cached balances and PPS.
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
 
@@ -108,20 +120,24 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @param newAggregatedBalance The new aggregated balance from external protocols
     /// @dev Validates that balance hasn't been updated in the current block and calls the balance update hook
     function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
-        // Validate not already updated this block
+        // Guard against multiple external syncs within the same block.
         require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
 
         _updateBalance(newAggregatedBalance);
 
-        // Update last block updated and timestamp updated
-        lastBlockUpdated = block.number;  // Only external syncs reset NAV freshness
+        // Update freshness trackers (external syncs reset NAV freshness).
+        lastBlockUpdated = block.number;
         lastTimestampUpdated = block.timestamp;
     }
 
     function _netTotalAssets(uint256 newAggregatedBalance) internal view returns (uint256) {
+        // Idle assets live on the vault contract.
         uint256 idleAssets = IERC20(asset()).balanceOf(address(this));
+        // Total assets = idle + aggregated external balances.
         uint256 totalAssetsAfter = idleAssets + newAggregatedBalance;
+        // Exclude queued redemptions and pending fees from NAV.
         uint256 excluded = totalPendingAssets + pendingFees();
+        // Prevent underflow if excluded > total.
         return totalAssetsAfter > excluded ? totalAssetsAfter - excluded : 0;
     }
 
@@ -129,6 +145,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @param newAdapter Address of the new balance update hook (cannot be zero)
     /// @inheritdoc IElitraVault
     function setBalanceUpdateHook(IBalanceUpdateHook newAdapter) external requiresAuth {
+        // Adapter must be valid.
         require(address(newAdapter) != address(0), Errors.ZeroAddress());
         emit BalanceUpdateHookUpdated(address(balanceUpdateHook), address(newAdapter));
         balanceUpdateHook = newAdapter;
@@ -137,6 +154,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @notice Set the NAV freshness threshold
     /// @param newThreshold Maximum allowed time (in seconds) since last NAV update. Set to 0 to disable check.
     function setNavFreshnessThreshold(uint256 newThreshold) external requiresAuth {
+        // Emit before update to preserve old/new values.
         emit NavFreshnessThresholdUpdated(navFreshnessThreshold, newThreshold);
         navFreshnessThreshold = newThreshold;
     }
@@ -146,27 +164,32 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @notice Take management/performance fees by minting shares to fee receivers.
     /// @dev Manual hook for now (does not auto-accrue on deposit/withdraw/updateBalance).
     function takeFees() external requiresAuth {
+        // Manual accrual; does not auto-run on other state changes.
         _takeFees();
     }
 
     /// @notice Update fee rates (applied after cooldown)
     function updateFeeRates(uint16 managementRateBps, uint16 performanceRateBps) external requiresAuth {
+        // Schedule new rates (subject to cooldown in FeeManager).
         _updateRates(Rates({ managementRate: managementRateBps, performanceRate: performanceRateBps }));
     }
 
     /// @notice Set the manager fee receiver
     function setFeeReceiver(address feeReceiver) external requiresAuth {
+        // Set manager fee receiver.
         _setFeeReceiver(feeReceiver);
     }
 
     /// @notice Set the fee registry used for protocol fee rate lookup
     function setFeeRegistry(address newRegistry) external requiresAuth {
+        // Update registry for protocol fee policy.
         _setFeeRegistry(newRegistry);
     }
 
     /// @notice Check if NAV is fresh (updated within threshold)
     /// @dev Reverts if navFreshnessThreshold > 0 and NAV is stale
     function _requireFreshNav() internal view {
+        // Enforce freshness only when threshold is enabled (>0).
         if (navFreshnessThreshold > 0 && block.timestamp > lastTimestampUpdated + navFreshnessThreshold) {
             revert Errors.StaleNav();
         }
@@ -176,34 +199,40 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function requestRedeem(uint256 shares, address receiver, address owner) public whenNotPaused returns (uint256) {
+        // Validate inputs and ownership.
         require(shares > 0, Errors.SharesAmountZero());
         require(owner == msg.sender, Errors.NotSharesOwner());
         require(receiver != address(0), Errors.ZeroAddress());
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
-        
-        _takeFees();  // Take fees before redeeming
 
+        // Accrue management/performance fees before computing redemption value.
+        _takeFees();
+
+        // Convert shares to assets after exit fee preview.
         uint256 assets = previewRedeem(shares);
 
         // Ask strategy how to handle this redemption
+        // Ask strategy/hook to choose redemption mode and adjust assets if needed.
         (RedemptionMode mode, uint256 actualAssets) = redemptionHook.beforeRedeem(this, shares, assets, owner, receiver);
 
         if (mode == RedemptionMode.INSTANT) {
-            _requireFreshNav(); // Instant redemptions require fresh NAV
+            // Instant redemptions require fresh NAV.
+            _requireFreshNav();
             _withdraw(owner, receiver, owner, actualAssets, shares);
             emit RedeemRequest(receiver, owner, actualAssets, shares, true);
             return actualAssets;
         } else if (mode == RedemptionMode.QUEUED) {
-            // Queue the redemption: burn shares and virtually remove assets from totalAssets
+            // Queue the redemption: burn shares and reserve assets.
             _requireFreshNav();
             _burn(owner, shares);
             
-            // Calculate and accumulate queued redeem fee
+            // Calculate and accumulate queued redeem fee (inclusive).
             (, , uint256 queuedFee, ) = _feeConfig();
             uint256 feeAmount = _feeOnTotal(actualAssets, queuedFee);
             uint256 assetsAfterFee = actualAssets - feeAmount;
             _addPendingFees(feeAmount);
             
+            // Track reserved assets to exclude from NAV.
             totalPendingAssets += assetsAfterFee;
 
             PendingRedeem storage pending = _pendingRedeem[receiver];
@@ -219,28 +248,32 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @inheritdoc IElitraVault
     function fulfillRedeem(address receiver, uint256 assets) external requiresAuth {
         // Take fees on every withdrawal (queued redemption fulfillment transfers assets out)
+        // Accrue fees before transferring assets out.
         _takeFees();
 
         PendingRedeem storage pending = _pendingRedeem[receiver];
+        // Ensure enough queued assets are available.
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
         emit RequestFulfilled(receiver, assets);
-        // Shares already burned at request time, just transfer assets
+        // Shares already burned at request time; just transfer assets.
         IERC20(asset()).safeTransfer(receiver, assets);
     }
 
     /// @inheritdoc IElitraVault
     function cancelRedeem(address receiver, uint256 assets) external requiresAuth {
-        _takeFees(); // Take fees before canceling redeem
+        // Accrue fees before minting back shares.
+        _takeFees();
 
         PendingRedeem storage pending = _pendingRedeem[receiver];
+        // Ensure cancel amount is valid.
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
-        // Mint shares based on current price to avoid price distortion
-        // Use super.previewDeposit to bypass fee - cancel should not charge fee
+        // Mint shares based on current price to avoid distortion.
+        // Use super.previewDeposit to bypass fee; cancel should not charge fee.
         uint256 sharesToMint = super.previewDeposit(assets);
 
         pending.assets -= assets;
@@ -252,6 +285,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function setRedemptionHook(IRedemptionHook newStrategy) external requiresAuth {
+        // Strategy must be valid.
         require(address(newStrategy) != address(0), Errors.ZeroAddress());
         emit RedemptionHookUpdated(address(redemptionHook), address(newStrategy));
         redemptionHook = newStrategy;
@@ -261,30 +295,35 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function setDepositFee(uint256 newFee) external requiresAuth {
+        // Update deposit fee (inclusive).
         uint256 oldFee = _setDepositFee(newFee);
         emit DepositFeeUpdated(oldFee, newFee);
     }
 
     /// @inheritdoc IElitraVault
     function setWithdrawFee(uint256 newFee) external requiresAuth {
+        // Update withdraw fee (inclusive).
         uint256 oldFee = _setWithdrawFee(newFee);
         emit WithdrawFeeUpdated(oldFee, newFee);
     }
 
     /// @inheritdoc IElitraVault
     function setQueuedRedeemFee(uint256 newFee) external requiresAuth {
+        // Update queued redeem fee (inclusive).
         uint256 oldFee = _setQueuedRedeemFee(newFee);
         emit QueuedRedeemFeeUpdated(oldFee, newFee);
     }
 
     /// @inheritdoc IElitraVault
     function setFeeRecipient(address newRecipient) external requiresAuth {
+        // Update recipient for manager fee claims.
         address oldRecipient = _setFeeRecipient(newRecipient);
         emit FeeRecipientUpdated(oldRecipient, newRecipient);
     }
 
     /// @inheritdoc IElitraVault
     function claimFees() external requiresAuth {
+        // Transfer pending manager fees in assets.
         (address recipient, uint256 fees) = _claimManagerFees();
         emit FeesClaimed(recipient, fees);
     }
@@ -292,12 +331,14 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @notice Claim accumulated protocol fees and transfer to protocol fee recipient
     /// @dev Protocol fees are determined by the fee registry
     function claimProtocolFees() external requiresAuth {
+        // Transfer pending protocol fees in assets.
         (address recipient, uint256 fees) = _claimProtocolFees();
         emit FeesClaimed(recipient, fees);
     }
 
     /// @inheritdoc IElitraVault
     function getAvailableBalance() public view returns (uint256) {
+        // Available = idle assets minus queued redemptions.
         uint256 balance = IERC20(asset()).balanceOf(address(this));
         return balance > totalPendingAssets ? balance - totalPendingAssets : 0;
     }
@@ -310,6 +351,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @notice Batch management is disabled - use manageBatchWithDelta instead
     /// @dev This function always reverts to prevent accidental use of the base manageBatch function
     function manageBatch(Call[] calldata) public payable override(VaultBase, IVaultBase) {
+        // Disallow base batch to ensure externalDelta is always provided.
         revert Errors.UseManageBatchWithDelta();
     }
 
@@ -325,10 +367,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         payable
         requiresAuth
     {
-        // Execute batch operations
+        // Execute batch operations first (may change external balances).
         super.manageBatch(calls);
 
-        // Apply explicit external balance delta
+        // Apply explicit external balance delta (positive or negative).
         uint256 newAggregatedUnderlyingBalances;
         if (externalDelta >= 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -340,18 +382,21 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
             newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances - absDelta;
         }
 
+        // Recompute PPS and apply hook checks.
         _updateBalance(newAggregatedUnderlyingBalances);
     }
 
     // ========================================= ERC4626 OVERRIDES =========================================
 
     function totalAssets() public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
+        // ERC4626 totalAssets excludes pending fees and queued redemptions.
         return _netTotalAssets(aggregatedUnderlyingBalances);
     }
 
     /// @notice Get the net total assets (excluding pending assets and fees)
     /// @return Net total assets available in the vault
     function netTotalAssets() external view returns (uint256) {
+        // Expose net assets for off-chain visibility.
         return _netTotalAssets(aggregatedUnderlyingBalances);
     }
 
@@ -364,6 +409,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         whenNotPaused
         returns (uint256)
     {
+        // Disallow stale NAV and accrue fees before minting shares.
         _requireFreshNav();
         _takeFees();
         return super.deposit(assets, receiver);
@@ -378,6 +424,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         whenNotPaused
         returns (uint256)
     {
+        // Disallow stale NAV and accrue fees before minting shares.
         _requireFreshNav();
         _takeFees();
         return super.mint(shares, receiver);
@@ -396,6 +443,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         whenNotPaused
         returns (uint256)
     {
+        // Redirect users to the queued/instant redeem flow.
         revert Errors.UseRequestRedeem();
     }
 
@@ -414,10 +462,12 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
+        // Wrap requestRedeem for ERC4626 compatibility.
         return requestRedeem(shares, receiver, owner);
     }
 
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal override whenNotPaused {
+        // Respect pause guard for transfers as well.
         super._beforeTokenTransfer(from, to, amount);
     }
 
@@ -427,11 +477,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
+        // When paused, disable deposits.
         if (paused()) return 0;
         return super.maxDeposit(receiver);
     }
 
     function maxMint(address receiver) public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
+        // When paused, disable mints.
         if (paused()) return 0;
         return super.maxMint(receiver);
     }
@@ -442,11 +494,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
+        // When paused, disable withdrawals (even though withdraw is disabled).
         if (paused()) return 0;
         return super.maxWithdraw(owner);
     }
 
     function maxRedeem(address owner) public view override(ERC4626Upgradeable, IERC4626Upgradeable) returns (uint256) {
+        // When paused, disable redemptions.
         if (paused()) return 0;
         return super.maxRedeem(owner);
     }
@@ -458,6 +512,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
+        // Entry fee is inclusive; compute fee and reduce assets accordingly.
         (uint256 depositFee, , , ) = _feeConfig();
         uint256 fee = _feeOnTotal(assets, depositFee);
         return super.previewDeposit(assets - fee);
@@ -470,6 +525,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
+        // Preview assets needed for shares, then add entry fee (exclusive).
         uint256 assets = super.previewMint(shares);
         (uint256 depositFee, , , ) = _feeConfig();
         return assets + _feeOnRaw(assets, depositFee);
@@ -482,6 +538,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
+        // Exit fee is exclusive for previewWithdraw.
         (, uint256 withdrawFee, , ) = _feeConfig();
         uint256 fee = _feeOnRaw(assets, withdrawFee);
         return super.previewWithdraw(assets + fee);
@@ -494,6 +551,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
+        // Exit fee is inclusive for previewRedeem.
         uint256 assets = super.previewRedeem(shares);
         (, uint256 withdrawFee, , ) = _feeConfig();
         return assets - _feeOnTotal(assets, withdrawFee);
@@ -501,11 +559,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IVaultBase
     function pause() public override(VaultBase, IVaultBase) requiresAuth {
+        // Admin pause (disables deposits/redemptions).
         _pause();
     }
 
     /// @inheritdoc IVaultBase
     function unpause() public override(VaultBase, IVaultBase) requiresAuth {
+        // Admin unpause.
         _unpause();
     }
 
@@ -514,12 +574,14 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @dev Override to handle fee on deposit
     /// @notice Fee is accumulated in pendingFees and excluded from totalAssets
     function _deposit(address caller, address receiver, uint256 assets, uint256 shares) internal override {
+        // Compute inclusive deposit fee.
         (uint256 depositFee, , , ) = _feeConfig();
         uint256 feeAmount = _feeOnTotal(assets, depositFee);
-        
+
+        // Deposit full assets to keep ERC4626 accounting consistent.
         super._deposit(caller, receiver, assets, shares);
 
-        // Accumulate fee (will be excluded from totalAssets via pendingFees)
+        // Accumulate fee (excluded from totalAssets via pendingFees).
         _addPendingFees(feeAmount);
     }
 
@@ -532,14 +594,15 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         uint256 assets,
         uint256 shares
     ) internal override {
-        // Take management/performance fees before charging exit fee (globalized)
+        // Compute inclusive exit fee.
         (, uint256 withdrawFee, , ) = _feeConfig();
         uint256 feeAmount = _feeOnTotal(assets, withdrawFee);
         uint256 assetsAfterFee = assets - feeAmount;
-        
+
+        // Withdraw net assets to receiver.
         super._withdraw(caller, receiver, owner, assetsAfterFee, shares);
-        
-        // Accumulate fee (will be excluded from totalAssets via pendingFees)
+
+        // Accumulate fee (excluded from totalAssets via pendingFees).
         _addPendingFees(feeAmount);
     }
 

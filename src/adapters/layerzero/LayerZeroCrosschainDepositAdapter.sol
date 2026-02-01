@@ -27,24 +27,30 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
     // ================== STATE VARIABLES ==================
 
     /// @notice LayerZero V2 endpoint contract
+    // Immutable endpoint to ensure routing cannot be changed post-deploy.
     ILayerZeroEndpointV2 public immutable endpoint;
 
     /// @notice Maps underlying token addresses to their OFT contract addresses
+    // token => OFT mapping for admin tooling and config audits.
     mapping(address => address) public tokenToOFT;
 
     /// @notice Maps OFT contract addresses to their underlying token addresses
+    // OFT => token mapping used at runtime when receiving messages.
     mapping(address => address) public oftToToken;
 
     /// @notice Tracks which OFTs are approved for use by this adapter
+    // Allowlist of OFT senders permitted to trigger deposits.
     mapping(address => bool) public supportedOFTs;
 
     /// @notice WETH9 token address (for wrapping native tokens received via OFT)
+    // WETH address used to wrap native assets delivered by OFT.
     address public weth;
 
     // ================== INITIALIZER ==================
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address _endpoint) {
+        // Endpoint is fixed for security and routing integrity.
         endpoint = ILayerZeroEndpointV2(_endpoint);
         _disableInitializers();
     }
@@ -60,6 +66,7 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
         public
         initializer
     {
+        // Initialize inherited adapter state and store WETH address.
         __BaseAdapter_init(_owner, _queue, _zapExecutor);
         weth = _weth;
     }
@@ -69,6 +76,7 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
      * @param _weth New WETH9 contract address
      */
     function setWeth(address _weth) external onlyOwner {
+        // Allow owner to update WETH if needed.
         weth = _weth;
     }
 
@@ -82,12 +90,6 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
      * @param _guid Unique identifier for this LayerZero message (used as depositId)
      * @param _message The compose message containing vault deposit parameters
      *
-     * @dev Process flow:
-     *      1. Verify caller is the LayerZero endpoint (security check)
-     *      2. Verify the OFT is supported (whitelist check)
-     *      3. Decode compose message to get source chain, amount, and deposit params
-     *      4. If receiving native token, wrap it to WETH
-     *      5. Call base logic to execute vault deposit
      *
      * @dev Compose message format (encoded by sender):
      *      abi.encode(vault, receiver, minAmountOut, zapCalls)
@@ -105,28 +107,28 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
         whenNotPaused
         nonReentrant
     {
-        // Security: Only accept compose messages from the LayerZero endpoint
+        // Security: Only accept compose messages from the LayerZero endpoint.
         require(msg.sender == address(endpoint), "Only endpoint");
 
-        // Security: Only accept from pre-approved OFTs
+        // Security: Only accept from pre-approved OFTs.
         require(supportedOFTs[_from], "OFT not supported");
 
-        // Decode the OFT compose message using LayerZero's codec
+        // Decode the OFT compose message using LayerZero's codec.
         uint32 srcEid = OFTComposeMsgCodec.srcEid(_message);
         uint256 amountLD = OFTComposeMsgCodec.amountLD(_message);
         bytes memory composeMsg = OFTComposeMsgCodec.composeMsg(_message);
 
-        // Get the underlying token address from the OFT mapping
+        // Get the underlying token address from the OFT mapping.
         address token = _getTokenFromOFT(_from);
 
-        // If the received token is native (maps to WETH), wrap it
-        // This handles cases where OFT is wrapping a native token (e.g., SEI -> WSEI)
+        // If the received token is native (maps to WETH), wrap it.
+        // This handles cases where OFT is wrapping a native token (e.g., SEI -> WSEI).
         if (token == weth) {
             IWETH9(weth).deposit{ value: amountLD }();
         }
 
-        // Execute the vault deposit using base adapter logic
-        // srcEid serves as the source identifier for tracking
+        // Execute the vault deposit using base adapter logic.
+        // srcEid serves as the source identifier for tracking.
         _processReceivedFunds(_from, srcEid, token, amountLD, _guid, composeMsg);
     }
 
@@ -143,9 +145,11 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
      * @dev Both addresses must be non-zero
      */
     function setSupportedOFT(address token, address oft, bool isActive) external onlyOwner {
+        // Validate inputs and prevent zero-address mappings.
         require(token != address(0) && oft != address(0), "Invalid address");
         tokenToOFT[token] = oft;
         oftToToken[oft] = token;
+        // Toggle allowlist status for the OFT.
         supportedOFTs[oft] = isActive;
     }
 
@@ -158,11 +162,12 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
      * @return token The underlying token address, or the OFT address if no mapping exists
      */
     function _getTokenFromOFT(address oft) internal view returns (address) {
+        // Prefer explicit mapping when it exists.
         address token = oftToToken[oft];
         if (token != address(0)) {
             return token;
         }
-        // Some OFTs are the token itself (e.g., native token OFTs)
+        // Some OFTs are the token itself (e.g., native token OFTs).
         return oft;
     }
 

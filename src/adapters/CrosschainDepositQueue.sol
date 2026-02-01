@@ -29,12 +29,17 @@ contract CrosschainDepositQueue is
 
     // ========================================= STATE VARIABLES =========================================
 
+    // Monotonic id counter for failed deposits.
     uint256 public totalFailedDeposits;
-    
+
+    // DepositId => failed deposit record.
     mapping(uint256 => FailedDeposit) public failedDeposits;
+    // User => list of failed deposit ids.
     mapping(address => uint256[]) public userFailedDepositIds;
+    // Adapters allowed to enqueue failed deposits.
     mapping(address => bool) public registeredAdapters;
 
+    // Zap executor used for fulfillment when token != vault asset.
     address public zapExecutor;
 
     // ========================================= INITIALIZER =========================================
@@ -45,6 +50,7 @@ contract CrosschainDepositQueue is
     }
 
     function initialize(address _owner) public initializer {
+        // Require a valid owner for admin/operator roles.
         require(_owner != address(0), "Invalid owner");
 
         __AccessControl_init();
@@ -57,11 +63,13 @@ contract CrosschainDepositQueue is
     // ========================================= MODIFIERS =========================================
 
     modifier onlyAdapter() {
+        // Only trusted adapters can enqueue failed deposits.
         require(registeredAdapters[msg.sender], "Only registered adapter");
         _;
     }
 
     modifier onlyOwnerOrOperator() {
+        // Owner or operator can resolve deposits.
         require(
             hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || hasRole(OPERATOR_ROLE, msg.sender),
             "Not owner or operator"
@@ -86,9 +94,10 @@ contract CrosschainDepositQueue is
         uint256 minAmountOut,
         Call[] calldata zapCalls
     ) external override onlyAdapter {
-        // Transfer tokens from adapter to this contract
+        // Transfer tokens from adapter to this contract for custody.
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
+        // Allocate a new failed deposit id.
         uint256 depositId = totalFailedDeposits++;
 
         failedDeposits[depositId] = FailedDeposit({
@@ -107,6 +116,7 @@ contract CrosschainDepositQueue is
             status: DepositStatus.Failed
         });
 
+        // Track per-user failed deposits.
         userFailedDepositIds[user].push(depositId);
 
         emit FailedDepositRecorded(depositId, user, token, msg.sender, amount, sharePrice, reason);
@@ -117,10 +127,11 @@ contract CrosschainDepositQueue is
      */
     function refundFailedDeposit(uint256 depositId) external override {
         FailedDeposit storage deposit = failedDeposits[depositId];
+        // Only unresolved failed deposits can be refunded.
         require(deposit.status == DepositStatus.Failed, "Not failed status");
         require(deposit.user != address(0), "Invalid recipient");
-        
-        // Allow either owner/operator OR the original user to refund
+
+        // Allow either owner/operator OR the original user to refund.
         require(
             hasRole(DEFAULT_ADMIN_ROLE, msg.sender) || 
             hasRole(OPERATOR_ROLE, msg.sender) || 
@@ -128,8 +139,10 @@ contract CrosschainDepositQueue is
             "Not authorized"
         );
 
+        // Mark resolved before transferring funds out.
         deposit.status = DepositStatus.Resolved;
 
+        // Return original tokens to the user.
         IERC20(deposit.token).safeTransfer(deposit.user, deposit.amount);
 
         emit DepositResolved(depositId, deposit.user, deposit.token, deposit.amount, false);
@@ -137,6 +150,7 @@ contract CrosschainDepositQueue is
 
     /**
      * @inheritdoc ICrosschainDepositQueue
+     * @param depositId The failed deposit id
      */
     function fulfillFailedDeposit(
         uint256 depositId,
@@ -144,6 +158,7 @@ contract CrosschainDepositQueue is
         Call[] calldata zapCalls
     ) external override onlyOwnerOrOperator returns (uint256 sharesOut) {
         FailedDeposit storage deposit = failedDeposits[depositId];
+        // Only unresolved failed deposits can be fulfilled.
         require(deposit.status == DepositStatus.Failed, "Not failed status");
         require(minSharesOut > 0, "minSharesOut=0");
         require(deposit.vault != address(0), "Invalid vault");
@@ -152,23 +167,24 @@ contract CrosschainDepositQueue is
         address vaultAsset = vault.asset();
 
         if (deposit.token == vaultAsset) {
-            // Direct deposit path
+            // Direct deposit path (token already matches vault asset).
             IERC20(vaultAsset).forceApprove(address(vault), deposit.amount);
 
             sharesOut = vault.deposit(deposit.amount, deposit.user);
 
-            // Reset approval for defensive safety
+            // Reset approval for defensive safety.
             IERC20(vaultAsset).forceApprove(address(vault), 0);
 
             require(sharesOut >= minSharesOut, "Shares below minimum");
         } else {
-            // Zap path - verify zapCalls matches original attested data
+            // Zap path - verify zapCalls matches original attested data.
             require(zapExecutor != address(0), "Zap executor not set");
             require(
                 keccak256(abi.encode(zapCalls)) == deposit.zapCallsHash,
                 "zapCalls mismatch"
             );
 
+            // Approve executor for this amount.
             IERC20(deposit.token).forceApprove(zapExecutor, deposit.amount);
 
             sharesOut = ZapExecutor(zapExecutor).executeZapAndDeposit(
@@ -180,12 +196,13 @@ contract CrosschainDepositQueue is
                 zapCalls
             );
 
-            // Reset approval for defensive safety
+            // Reset approval for defensive safety.
             IERC20(deposit.token).forceApprove(zapExecutor, 0);
 
             require(sharesOut >= minSharesOut, "Shares below minimum");
         }
 
+        // Mark resolved after successful fulfillment.
         deposit.status = DepositStatus.Resolved;
 
         emit DepositResolved(depositId, deposit.user, deposit.token, deposit.amount, true);
@@ -197,6 +214,7 @@ contract CrosschainDepositQueue is
      * @inheritdoc ICrosschainDepositQueue
      */
     function setAdapterRegistration(address _adapter, bool _registered) external override onlyOwnerOrOperator {
+        // Validate adapter address before registration.
         require(_adapter != address(0), "Invalid adapter");
         registeredAdapters[_adapter] = _registered;
         emit AdapterRegistered(_adapter, _registered);
@@ -206,6 +224,7 @@ contract CrosschainDepositQueue is
      * @inheritdoc ICrosschainDepositQueue
      */
     function setZapExecutor(address exec) external override onlyOwnerOrOperator {
+        // Zap executor must be configured for zap-based fulfillments.
         require(exec != address(0), "Invalid zap executor");
         zapExecutor = exec;
     }
@@ -218,6 +237,7 @@ contract CrosschainDepositQueue is
      * @inheritdoc ICrosschainDepositQueue
      */
     function getFailedDeposit(uint256 depositId) external view override returns (FailedDeposit memory) {
+        // Expose failed deposit record for UI.
         return failedDeposits[depositId];
     }
 
@@ -225,6 +245,7 @@ contract CrosschainDepositQueue is
      * @inheritdoc ICrosschainDepositQueue
      */
     function getUserFailedDeposits(address user) external view override returns (uint256[] memory) {
+        // Expose per-user failed deposits.
         return userFailedDepositIds[user];
     }
 
@@ -232,6 +253,7 @@ contract CrosschainDepositQueue is
      * @inheritdoc ICrosschainDepositQueue
      */
     function isAdapterRegistered(address _adapter) external view override returns (bool) {
+        // Query adapter registration status.
         return registeredAdapters[_adapter];
     }
 
@@ -245,6 +267,7 @@ contract CrosschainDepositQueue is
     /// @param to Recipient address
     /// @param amount Amount to recover (0 for full balance)
     function recoverToken(address token, address to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Recover ERC20 dust; amount=0 means full balance.
         require(to != address(0), "Invalid recipient");
         uint256 balance = IERC20(token).balanceOf(address(this));
         uint256 toRecover = amount == 0 ? balance : amount;
@@ -256,6 +279,7 @@ contract CrosschainDepositQueue is
     /// @param to Recipient address
     /// @param amount Amount to recover (0 for full balance)
     function recoverNative(address payable to, uint256 amount) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        // Recover native dust; amount=0 means full balance.
         require(to != address(0), "Invalid recipient");
         uint256 balance = address(this).balance;
         uint256 toRecover = amount == 0 ? balance : amount;
