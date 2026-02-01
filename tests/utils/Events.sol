@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
 /// @notice Abstract contract containing all the events emitted by the protocol.

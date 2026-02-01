@@ -27,6 +27,34 @@ Specs: [specs/guardrail.md](specs/guardrail.md), [specs/manage-security.md](spec
 
 ### Flow (How Components Connect)
 
+Flow summary:
+- Users deposit/mint into `ElitraVault`; fees are tracked via `FeeManager` + `FeeRegistry`.
+- Balance updates go through the balance update hook; redemptions go through the redemption hook.
+- Operators call `manageBatchWithDelta` on the vault; guarded calls are enforced by guards/trusted targets.
+- Cross-chain deposits arrive via CCTP/LayerZero adapters (`src/crosschain-adapters`), optionally zap via `ZapExecutor`, then deposit into the vault; failures go to `CrosschainDepositQueue`.
+- Vault-managed swaps use `Api3SwapAdapter` (`src/adapters`) with API3 validation.
+
+Mermaid: Components and Flow
+```mermaid
+flowchart TB
+    User[User] -->|direct deposit| Vault[ElitraVault]
+    User -->|crosschain deposit| Bridge[Bridge CCTP or LayerZero]
+    Bridge --> XAdapter[Crosschain adapters]
+    XAdapter -->|optional zap| ZapExec[ZapExecutor]
+    ZapExec --> Vault
+    XAdapter -->|direct deposit| Vault
+    XAdapter -->|failure| Queue[CrosschainDepositQueue]
+
+    Operator[Operator] -->|manageBatchWithDelta| Vault
+    Vault -->|validate calls| Guards[Guards and trusted targets]
+    Guards -->|strategy calls| Yei[Yei]
+    Guards -->|strategy calls| Takara[Takara]
+    Guards -->|strategy calls| Morpho[Morpho]
+
+    Yei -->|positions and yield| Vault
+    Takara -->|positions and yield| Vault
+    Morpho -->|positions and yield| Vault
+```
 
 ## Actors
 
@@ -39,4 +67,4 @@ Specs: [specs/guardrail.md](specs/guardrail.md), [specs/manage-security.md](spec
 
 ## License
 
-MIT License - see [LICENSE.md](LICENSE.md)
+UNLICENSED - All rights reserved. No license granted.
