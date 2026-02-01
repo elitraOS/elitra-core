@@ -16,3 +16,16 @@ contract BlockAllGuard is ITransactionGuard {
         return false;
     }
 }
+
+/// @notice Mock transaction guard for testing
+contract MockTransactionGuard is ITransactionGuard {
+    bool public shouldValidate = true;
+
+    function validate(address, bytes calldata, uint256) external view override returns (bool) {
+        return shouldValidate;
+    }
+
+    function setShouldValidate(bool value) external {
+        shouldValidate = value;
+    }
+}
