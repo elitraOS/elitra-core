@@ -21,6 +21,7 @@ contract CancelRedeem_Test is ElitraVault_Base_Test {
 
         // Simulate vault deploying most funds (leave only 10 USDC)
         vm.prank(address(vault));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         asset.transfer(makeAddr("strategy"), 1990e6);
 
         // Alice requests redemption of 500 shares

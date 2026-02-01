@@ -25,6 +25,8 @@ contract MorphoVaultGuard is ITransactionGuard {
 
     /// @inheritdoc ITransactionGuard
     function validate(address, bytes calldata data, uint256) external view override returns (bool) {
+        // Safe: Only reading first 4 bytes (function selector) from calldata
+        // forge-lint: disable-next-line(unsafe-typecast)
         bytes4 sig = bytes4(data);
 
         if (sig == DEPOSIT_SELECTOR) {

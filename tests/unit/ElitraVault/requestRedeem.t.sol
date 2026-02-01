@@ -2,7 +2,6 @@
 pragma solidity 0.8.28;
 
 import { ElitraVault_Base_Test } from "./Base.t.sol";
-import { IElitraVault } from "../../../src/interfaces/IElitraVault.sol";
 
 contract RequestRedeem_Test is ElitraVault_Base_Test {
     address public alice;
@@ -35,6 +34,7 @@ contract RequestRedeem_Test is ElitraVault_Base_Test {
         // Simulate vault deploying funds using oracle to set aggregated balance
         // Transfer 1800 out of 2000 total assets
         vm.prank(address(vault));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         asset.transfer(makeAddr("strategy"), 1800e6);
 
         // Now vault only has 200 USDC idle (2000 total - 1800 deployed)

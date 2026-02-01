@@ -5,9 +5,8 @@ import { Test } from "forge-std/Test.sol";
 import { console } from "forge-std/console.sol";
 import { ElitraVault } from "src/ElitraVault.sol";
 import { Authority } from "@solmate/auth/Auth.sol";
-import { IVaultBase, Call } from "src/interfaces/IVaultBase.sol";
+import { Call } from "src/interfaces/IVaultBase.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { WNativeGuard } from "src/guards/base/WNativeGuard.sol";
 
 

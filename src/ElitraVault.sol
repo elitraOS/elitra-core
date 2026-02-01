@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import { Errors } from "./libraries/Errors.sol";
 import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
 import { IVaultBase } from "./interfaces/IVaultBase.sol";
-import { ITransactionGuard } from "./interfaces/ITransactionGuard.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
@@ -301,7 +300,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         return _pendingRedeem[user].assets;
     }
 
-    function manageBatch(Call[] calldata calls) public payable override(VaultBase, IVaultBase) {
+    function manageBatch(Call[] calldata) public payable override(VaultBase, IVaultBase) {
         revert Errors.UseManageBatchWithDelta();
     }
 
@@ -319,8 +318,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         // Apply explicit external balance delta
         uint256 newAggregatedUnderlyingBalances;
         if (externalDelta >= 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
             newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances + uint256(externalDelta);
         } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint256 absDelta = uint256(-externalDelta);
             require(absDelta <= aggregatedUnderlyingBalances, "External delta exceeds balances");
             newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances - absDelta;
@@ -367,6 +368,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         return super.mint(shares, receiver);
     }
 
+    /// @notice Withdraw is disabled - use requestRedeem instead
+    /// @dev Cannot be view: must match IERC4626Upgradeable interface signature
+    /// @custom:warning 2018 - Function intentionally not view to match interface
     function withdraw(
         uint256,
         address,

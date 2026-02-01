@@ -7,7 +7,6 @@ import { ElitraVault } from "../../src/ElitraVault.sol";
 import { ManualBalanceUpdateHook } from "../../src/hooks/ManualBalanceUpdateHook.sol";
 import { HybridRedemptionHook } from "../../src/hooks/HybridRedemptionHook.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract Deploy is Script {
     function run() public {

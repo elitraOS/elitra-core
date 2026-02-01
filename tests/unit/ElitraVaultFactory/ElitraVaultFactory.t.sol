@@ -8,7 +8,6 @@ import { ManualBalanceUpdateHook } from "../../../src/hooks/ManualBalanceUpdateH
 import { HybridRedemptionHook } from "../../../src/hooks/HybridRedemptionHook.sol";
 import { ERC20Mock } from "../../mocks/ERC20Mock.sol";
 import { FeeRegistryMock } from "../../mocks/FeeRegistryMock.sol";
-import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import { IBalanceUpdateHook } from "../../../src/interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook } from "../../../src/interfaces/IRedemptionHook.sol";
 

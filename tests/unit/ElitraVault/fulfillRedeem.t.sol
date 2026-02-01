@@ -21,6 +21,7 @@ contract FulfillRedeem_Test is ElitraVault_Base_Test {
 
         // Simulate vault deploying most funds (leave only 10 USDC)
         vm.prank(address(vault));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         asset.transfer(makeAddr("strategy"), 1990e6);
 
         // Alice requests redemption of 500 shares
@@ -43,6 +44,7 @@ contract FulfillRedeem_Test is ElitraVault_Base_Test {
         // Simulate strategy returning funds
         address strategy = makeAddr("strategy");
         vm.prank(strategy);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         asset.transfer(address(vault), pendingAssets);
 
         uint256 aliceBalanceBefore = asset.balanceOf(alice);
@@ -63,6 +65,7 @@ contract FulfillRedeem_Test is ElitraVault_Base_Test {
 
         address strategy = makeAddr("strategy");
         vm.prank(strategy);
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         asset.transfer(address(vault), pendingAssets);
 
         vm.expectEmit(true, true, true, true);

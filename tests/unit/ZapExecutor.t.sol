@@ -9,7 +9,6 @@ import { ManualBalanceUpdateHook } from "../../src/hooks/ManualBalanceUpdateHook
 import { HybridRedemptionHook } from "../../src/hooks/HybridRedemptionHook.sol";
 import { FeeRegistryMock } from "../mocks/FeeRegistryMock.sol";
 import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import { IVaultBase } from "../../src/interfaces/IVaultBase.sol";
 import { Call } from "../../src/interfaces/IVaultBase.sol";
 
 contract ZapExecutor_Test is Test {

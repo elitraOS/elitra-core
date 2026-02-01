@@ -235,8 +235,11 @@ contract Api3SwapAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
         uint32 staleSeconds = cfg.staleSeconds == 0 ? defaultStaleSeconds : cfg.staleSeconds;
         if (staleSeconds != 0 && uint256(updatedAt) + staleSeconds < block.timestamp) {
             revert PriceStale(token, uint256(updatedAt), staleSeconds);
-        }
+        }   
 
+        if (value < 0) revert InvalidPrice(token);
+
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 price = uint256(int256(value));
         if (cfg.decimals == 18) return price;
         if (cfg.decimals < 18) return price * (10 ** (18 - cfg.decimals));

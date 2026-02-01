@@ -5,7 +5,6 @@ import { Test } from "forge-std/Test.sol";
 import { VaultBase } from "../../../src/vault/VaultBase.sol";
 import { ERC20Mock } from "../../mocks/ERC20Mock.sol";
 import { MockTransactionGuard } from "../../mocks/MockGuards.sol";
-import { IVaultBase } from "../../../src/interfaces/IVaultBase.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /// @title VaultBaseMock

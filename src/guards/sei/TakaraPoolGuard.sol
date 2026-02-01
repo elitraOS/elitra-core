@@ -16,6 +16,7 @@ contract TakaraPoolGuard is ITransactionGuard {
 
     /// @inheritdoc ITransactionGuard
     function validate(address, bytes calldata data, uint256) external pure override returns (bool) {
+        // forge-lint: disable-next-line(unsafe-typecast)
         bytes4 sig = bytes4(data);
 
         // Only allow mint and redeem operations

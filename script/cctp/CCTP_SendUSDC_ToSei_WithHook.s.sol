@@ -5,7 +5,6 @@ import { BaseScript } from "../Base.s.sol";
 import { console } from "forge-std/console.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ITokenMessengerV2 } from "src/interfaces/external/cctp/ITokenMessengerV2.sol";
-import { CCTPCrosschainDepositAdapter } from "src/adapters/cctp/CCTPCrosschainDepositAdapter.sol";
 import { Call } from "src/interfaces/IElitraVault.sol";
 
 /**

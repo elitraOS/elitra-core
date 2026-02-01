@@ -16,6 +16,7 @@ contract OracleIntegration_Test is ElitraVault_Base_Test {
 
         // Simulate 1000 deployed to strategy
         vm.prank(address(vault));
+        // forge-lint: disable-next-line(erc20-unchecked-transfer)
         asset.transfer(makeAddr("strategy"), 1000e6);
 
         // Initialize lastPricePerShare with 1000e6 aggregated balance (1:1 ratio)

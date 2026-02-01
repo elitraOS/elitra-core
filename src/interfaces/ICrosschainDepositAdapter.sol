@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import { Call } from "./IElitraVault.sol";
 /**
  * @title IMultichainDepositAdapter
  * @notice Bridge adapter, for handling crosschain fund movements

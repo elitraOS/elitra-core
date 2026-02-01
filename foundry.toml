@@ -5,8 +5,22 @@ out = "out"
 libs = ["lib"]
 solc_version = "0.8.28"
 via_ir = true
+# Ignore compiler warning 2018: Function state mutability can be restricted to view
+# Some functions must match interface signatures that require non-view even if they only revert
+ignored_error_codes = [2018]
 
 # See more config options https://book.getfoundry.sh/reference/config.html
 
 # Coverage configuration
 # Run: forge coverage --exclude-tests --skip script --ir-minimum
+
+[lint]
+# Warnings are documented inline with forge-lint: disable-next-line comments
+# explaining why each cast/transfer is safe
+# All unsafe-typecast warnings are documented (bytes4 casts, int256->uint256 with checks)
+# All erc20-unchecked-transfer warnings in tests are documented (ERC20Mock always succeeds)
+exclude_lints = ["mixed-case-function", "mixed-case-variable", "unwrapped-modifier-logic"]
+# Only show high, med, low severity - ignore info/gas/code-size (note level)
+severity = ["high", "med", "low"]
+# Ignore lint warnings in test files
+ignore = ["tests/**/*.sol"]

@@ -2,8 +2,7 @@
 pragma solidity 0.8.28;
 
 import { ElitraVault_Base_Test } from "./Base.t.sol";
-import { IElitraVault, Call } from "../../../src/interfaces/IElitraVault.sol";
-import { IVaultBase } from "../../../src/interfaces/IVaultBase.sol";
+import { Call } from "../../../src/interfaces/IElitraVault.sol";
 import { AllowAllGuard, BlockAllGuard } from "../../mocks/MockGuards.sol";
 import { Errors } from "../../../src/libraries/Errors.sol";
 
@@ -178,6 +177,7 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         uint256 positiveDelta = 100e6; // 100 USDC
 
         vm.prank(owner);
+        // forge-lint: disable-next-line(unsafe-typecast)
         vault.manageBatchWithDelta(calls, int256(positiveDelta));
 
         // Verify aggregated balance increased
@@ -213,6 +213,7 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         uint256 negativeDelta = 50e6; // 50 USDC (5% decrease)
 
         vm.prank(owner);
+        // forge-lint: disable-next-line(unsafe-typecast)
         vault.manageBatchWithDelta(calls, -int256(negativeDelta));
 
         // Verify aggregated balance decreased
@@ -242,6 +243,7 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
 
         vm.prank(owner);
         vm.expectRevert("External delta exceeds balances");
+        // forge-lint: disable-next-line(unsafe-typecast)
         vault.manageBatchWithDelta(calls, -int256(negativeDelta));
     }
 }

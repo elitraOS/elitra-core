@@ -4,9 +4,6 @@ pragma solidity 0.8.28;
 import { Test } from "forge-std/Test.sol";
 import { LayerZeroCrosschainDepositAdapter } from "../../src/adapters/layerzero/LayerZeroCrosschainDepositAdapter.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
-import { ILayerZeroEndpointV2 } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
-import { OFTComposeMsgCodec } from "@layerzerolabs/oapp-evm/contracts/oft/libs/OFTComposeMsgCodec.sol";
-import { IWETH9 } from "../../src/interfaces/IWETH9.sol";
 import { Call } from "../../src/interfaces/IVaultBase.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 

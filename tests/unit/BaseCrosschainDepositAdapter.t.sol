@@ -5,9 +5,6 @@ import { Test } from "forge-std/Test.sol";
 import { BaseCrosschainDepositAdapter } from "../../src/adapters/BaseCrosschainDepositAdapter.sol";
 import { ICrosschainDepositAdapter } from "../../src/interfaces/ICrosschainDepositAdapter.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
-import { ICrosschainDepositQueue } from "../../src/interfaces/ICrosschainDepositQueue.sol";
-import { IVaultBase } from "../../src/interfaces/IVaultBase.sol";
-import { Call } from "../../src/interfaces/IVaultBase.sol";
 
 // Mock implementation for testing
 contract MockAdapter is BaseCrosschainDepositAdapter {

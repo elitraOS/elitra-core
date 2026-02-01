@@ -156,8 +156,10 @@ contract Api3SwapAdapterSeiForkTest is Test {
 
         // Calculate expected output using price feeds
         // SEI price in USD (18 decimals from mock)
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 seiPrice18 = uint256(int256(seiValue));
         // WBTC price in USD (8 decimals from mock, will be scaled to 18 by adapter)
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 wbtcPrice8 = uint256(int256(wbtcValue));
         uint256 wbtcPrice18 = wbtcPrice8 * 1e10; // Scale to 18 decimals
 
