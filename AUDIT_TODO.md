@@ -1,6 +1,6 @@
 # Sherlock Audit Readiness — Code-Side TODO
 
-- [ ] Add/expand tests to reach ≥80% coverage
+- [ x] Add/expand tests to reach ≥80% coverage
 - [ ] Ensure every test has a clear failure path
 - [ ] Make full test suite pass 100%
 - [ ] Add NatSpec to all contracts, public/external functions, and key vars

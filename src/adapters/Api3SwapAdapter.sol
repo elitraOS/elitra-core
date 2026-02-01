@@ -63,6 +63,7 @@ contract Api3SwapAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
     error PriceFeedNotSet(address token);
     error InvalidPrice(address token);
     error PriceStale(address token, uint256 updatedAt, uint256 staleSeconds);
+    error PriceTimestampInFuture(address token, uint256 updatedAt, uint256 blockTimestamp);
     error MinReturnNotMet(uint256 spentIn, uint256 receivedOut, uint256 expectedOut18, uint16 minBps);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -227,6 +228,9 @@ contract Api3SwapAdapter is Initializable, OwnableUpgradeable, UUPSUpgradeable {
 
         (int224 value, uint32 updatedAt) = IApi3ReaderProxy(cfg.proxy).read();
         if (value <= 0) revert InvalidPrice(token);
+        if (uint256(updatedAt) > block.timestamp) {
+            revert PriceTimestampInFuture(token, uint256(updatedAt), block.timestamp);
+        }
 
         uint32 staleSeconds = cfg.staleSeconds == 0 ? defaultStaleSeconds : cfg.staleSeconds;
         if (staleSeconds != 0 && uint256(updatedAt) + staleSeconds < block.timestamp) {

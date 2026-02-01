@@ -5,13 +5,17 @@ import { Test } from "forge-std/Test.sol";
 import { LayerZeroCrosschainDepositAdapter } from "../../src/adapters/layerzero/LayerZeroCrosschainDepositAdapter.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 import { ILayerZeroEndpointV2 } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
+import { OFTComposeMsgCodec } from "@layerzerolabs/oapp-evm/contracts/oft/libs/OFTComposeMsgCodec.sol";
+import { IWETH9 } from "../../src/interfaces/IWETH9.sol";
 import { Call } from "../../src/interfaces/IVaultBase.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 /**
  * @title LayerZeroCrosschainDepositAdapterTest
  * @notice Test suite for LayerZeroCrosschainDepositAdapter
  */
 contract LayerZeroCrosschainDepositAdapter_Test is Test {
+    LayerZeroCrosschainDepositAdapter public implementation;
     LayerZeroCrosschainDepositAdapter public adapter;
     ERC20Mock public token;
     MockEndpoint public endpoint;
@@ -32,31 +36,46 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
         endpoint = new MockEndpoint();
         oft = new MockOFT(address(token));
 
-        adapter = new LayerZeroCrosschainDepositAdapter(address(endpoint));
-        adapter.initialize(owner, queue, zapExecutor, weth);
+        // Deploy implementation
+        implementation = new LayerZeroCrosschainDepositAdapter(address(endpoint));
+
+        bytes memory initData = abi.encodeWithSelector(
+            LayerZeroCrosschainDepositAdapter.initialize.selector,
+            owner,
+            queue,
+            zapExecutor,
+            weth
+        );
+
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            initData
+        );
+
+        adapter = LayerZeroCrosschainDepositAdapter(payable(address(proxy)));
     }
 
     // =========================================
     // initialize
     // =========================================
 
-    function test_Initialize_SetsOwner() public {
+    function test_Initialize_SetsOwner() public view {
         assertEq(adapter.owner(), owner);
     }
 
-    function test_Initialize_SetsEndpoint() public {
+    function test_Initialize_SetsEndpoint() public view {
         assertEq(address(adapter.endpoint()), address(endpoint));
     }
 
-    function test_Initialize_SetsWeth() public {
+    function test_Initialize_SetsWeth() public view {
         assertEq(adapter.weth(), weth);
     }
 
-    function test_Initialize_SetsQueue() public {
+    function test_Initialize_SetsQueue() public view {
         assertEq(adapter.depositQueue(), queue);
     }
 
-    function test_Initialize_SetsZapExecutor() public {
+    function test_Initialize_SetsZapExecutor() public view {
         assertEq(address(adapter.zapExecutor()), zapExecutor);
     }
 
@@ -160,53 +179,41 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
     }
 
     function test_LzCompose_AcceptsWhenFromEndpointAndSupported() public {
+        MockVault vault = new MockVault(address(token));
+        
         vm.startPrank(owner);
         adapter.setSupportedOFT(address(token), address(oft), true);
-        adapter.setSupportedVault(makeAddr("vault"), true);
+        adapter.setSupportedVault(address(vault), true);
         vm.stopPrank();
-
-        // Setup queue to handle failed deposit
-        vm.mockCall(
-            queue,
-            abi.encodeWithSelector(ICrosschainDepositQueue.recordFailedDeposit.selector),
-            abi.encode()
-        );
 
         // Give OFT tokens to adapter
         deal(address(token), address(adapter), 100e18);
 
         bytes32 guid = bytes32(uint256(1));
-        bytes memory hookData = abi.encode(makeAddr("vault"), makeAddr("receiver"), 0, new Call[](0));
+        bytes memory hookData = abi.encode(address(vault), makeAddr("receiver"), 0, new Call[](0));
         bytes memory message = _encodeComposeMessage(12345, 100e18, hookData);
 
         vm.startPrank(address(endpoint));
         // This should not revert from the endpoint/OFT check
-        // It may fail elsewhere without full mocks
         adapter.lzCompose(address(oft), guid, message, address(0), "");
         vm.stopPrank();
     }
 
     function test_LzCompose_CallsBaseProcessReceivedFunds() public {
+        MockVault vault = new MockVault(address(token));
+        
         vm.startPrank(owner);
         adapter.setSupportedOFT(address(token), address(oft), true);
-        adapter.setSupportedVault(makeAddr("vault"), true);
+        adapter.setSupportedVault(address(vault), true);
         vm.stopPrank();
 
         // Give OFT tokens to adapter
         deal(address(token), address(adapter), 100e18);
 
         bytes32 guid = bytes32(uint256(1));
-        address vault = makeAddr("vault");
         address receiver = makeAddr("receiver");
-        bytes memory hookData = abi.encode(vault, receiver, 0, new Call[](0));
+        bytes memory hookData = abi.encode(address(vault), receiver, 0, new Call[](0));
         bytes memory message = _encodeComposeMessage(12345, 100e18, hookData);
-
-        // Mock the queue
-        vm.mockCall(
-            queue,
-            abi.encodeWithSelector(ICrosschainDepositQueue(queue).recordFailedDeposit.selector),
-            abi.encode()
-        );
 
         vm.startPrank(address(endpoint));
         adapter.lzCompose(address(oft), guid, message, address(0), "");
@@ -218,24 +225,19 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
 
     function test_Fuzz_LzCompose_AnyAmount(uint256 amount) public {
         vm.assume(amount > 0 && amount < 1e30);
+        MockVault vault = new MockVault(address(token));
+        
         vm.startPrank(owner);
         adapter.setSupportedOFT(address(token), address(oft), true);
-        adapter.setSupportedVault(makeAddr("vault"), true);
+        adapter.setSupportedVault(address(vault), true);
         vm.stopPrank();
 
         // Give OFT tokens to adapter
         deal(address(token), address(adapter), amount);
 
         bytes32 guid = bytes32(uint256(1));
-        bytes memory hookData = abi.encode(makeAddr("vault"), makeAddr("receiver"), 0, new Call[](0));
+        bytes memory hookData = abi.encode(address(vault), makeAddr("receiver"), 0, new Call[](0));
         bytes memory message = _encodeComposeMessage(12345, amount, hookData);
-
-        // Mock the queue
-        vm.mockCall(
-            queue,
-            abi.encodeWithSelector(ICrosschainDepositQueue(queue).recordFailedDeposit.selector),
-            abi.encode()
-        );
 
         vm.startPrank(address(endpoint));
         adapter.lzCompose(address(oft), guid, message, address(0), "");
@@ -289,9 +291,14 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
         uint256 amountLD,
         bytes memory composeMsg
     ) internal pure returns (bytes memory) {
-        // Simplified OFT compose message encoding
-        // Format: srcEid(4) + amountLD(32) + composeMsgLength(4) + composeMsg
-        return abi.encodePacked(srcEid, amountLD, uint32(composeMsg.length), composeMsg);
+        // OFT compose message encoding per OFTComposeMsgCodec
+        // Format: nonce(8) + srcEid(4) + amountLD(32) + composeMsg
+        // composeMsg should include composeFrom(32) + actual message
+        // For testing, we use nonce=0 and composeFrom=address(0)
+        uint64 nonce = 0;
+        bytes32 composeFrom = bytes32(0);
+        bytes memory fullComposeMsg = abi.encodePacked(composeFrom, composeMsg);
+        return abi.encodePacked(nonce, srcEid, amountLD, fullComposeMsg);
     }
 }
 
@@ -326,18 +333,20 @@ contract MockOFT {
     ) external payable {}
 }
 
-// Minimal interface for the mock
-interface ICrosschainDepositQueue {
-    function recordFailedDeposit(
-        address user,
-        uint32 srcEid,
-        address token,
-        uint256 amount,
-        address vault,
-        bytes32 guid,
-        bytes memory reason,
-        uint256 sharePrice,
-        uint256 minAmountOut,
-        bytes calldata zapCalls
-    ) external;
+contract MockVault {
+    address public asset;
+    bool public shouldRevert;
+
+    constructor(address _asset) {
+        asset = _asset;
+    }
+
+    function setShouldRevert(bool _shouldRevert) external {
+        shouldRevert = _shouldRevert;
+    }
+
+    function deposit(uint256, address) external returns (uint256) {
+        if (shouldRevert) revert("Deposit failed");
+        return 0; // Return 0 shares to simulate failure
+    }
 }

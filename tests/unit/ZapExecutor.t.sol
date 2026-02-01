@@ -126,6 +126,7 @@ contract ZapExecutor_Test is Test {
         asset.mint(address(zapExecutor), dustAmount);
 
         uint256 balBefore = asset.balanceOf(sweeper);
+        vm.prank(sweeper);
         zapExecutor.sweepToken(address(asset));
 
         assertEq(asset.balanceOf(address(zapExecutor)), 0);
@@ -147,6 +148,7 @@ contract ZapExecutor_Test is Test {
 
         vm.deal(address(zapExecutor), ethAmount);
 
+        vm.prank(sweeper);
         zapExecutor.sweepNative();
 
         assertEq(address(zapExecutor).balance, 0);

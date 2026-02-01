@@ -5,61 +5,99 @@ import { Test } from "forge-std/Test.sol";
 import { CCTPCrosschainDepositAdapter } from "../../src/adapters/cctp/CCTPCrosschainDepositAdapter.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 import { Call } from "../../src/interfaces/IVaultBase.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract CCTPCrosschainDepositAdapter_Test is Test {
+    CCTPCrosschainDepositAdapter public implementation;
     CCTPCrosschainDepositAdapter public adapter;
     ERC20Mock public usdc;
     address public owner;
     address public queue;
     address public zapExecutor;
+    address public transmitter;
 
     function setUp() public {
         owner = makeAddr("owner");
         queue = makeAddr("queue");
         zapExecutor = makeAddr("zapExecutor");
+        transmitter = makeAddr("transmitter");
 
         usdc = new ERC20Mock();
 
-        adapter = new CCTPCrosschainDepositAdapter();
-        adapter.initialize(owner, makeAddr("transmitter"), address(usdc), queue, zapExecutor);
+        // Deploy implementation and proxy
+        implementation = new CCTPCrosschainDepositAdapter();
+
+        bytes memory initData = abi.encodeWithSelector(
+            CCTPCrosschainDepositAdapter.initialize.selector,
+            owner,
+            transmitter,
+            address(usdc),
+            queue,
+            zapExecutor
+        );
+
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            initData
+        );
+
+        adapter = CCTPCrosschainDepositAdapter(payable(address(proxy)));
     }
 
     // =========================================
     // initialize
     // =========================================
 
-    function test_Initialize_SetsOwner() public {
+    function test_Initialize_SetsOwner() public view {
         assertEq(adapter.owner(), owner);
     }
 
-    function test_Initialize_SetsMessageTransmitter() public {
-        assertEq(address(adapter.messageTransmitter()), makeAddr("transmitter"));
+    function test_Initialize_SetsMessageTransmitter() public view {
+        assertEq(address(adapter.messageTransmitter()), transmitter);
     }
 
-    function test_Initialize_SetsUSDC() public {
+    function test_Initialize_SetsUSDC() public view {
         assertEq(adapter.usdc(), address(usdc));
     }
 
-    function test_Initialize_SetsQueue() public {
+    function test_Initialize_SetsQueue() public view {
         assertEq(adapter.depositQueue(), queue);
     }
 
-    function test_Initialize_SetsZapExecutor() public {
+    function test_Initialize_SetsZapExecutor() public view {
         assertEq(address(adapter.zapExecutor()), zapExecutor);
     }
 
     function test_Initialize_RevertsWhenZeroTransmitter() public {
-        CCTPCrosschainDepositAdapter newAdapter = new CCTPCrosschainDepositAdapter();
+        CCTPCrosschainDepositAdapter newImpl = new CCTPCrosschainDepositAdapter();
+
+        bytes memory initData = abi.encodeWithSelector(
+            CCTPCrosschainDepositAdapter.initialize.selector,
+            owner,
+            address(0),
+            address(usdc),
+            queue,
+            zapExecutor
+        );
 
         vm.expectRevert(CCTPCrosschainDepositAdapter.InvalidMessageTransmitter.selector);
-        newAdapter.initialize(owner, address(0), address(usdc), queue, zapExecutor);
+        new ERC1967Proxy(address(newImpl), initData);
     }
 
     function test_Initialize_RevertsWhenZeroUSDC() public {
-        CCTPCrosschainDepositAdapter newAdapter = new CCTPCrosschainDepositAdapter();
+        CCTPCrosschainDepositAdapter newImpl = new CCTPCrosschainDepositAdapter();
+
+        bytes memory initData = abi.encodeWithSelector(
+            CCTPCrosschainDepositAdapter.initialize.selector,
+            owner,
+            transmitter,
+            address(0),
+            queue,
+            zapExecutor
+        );
 
         vm.expectRevert(CCTPCrosschainDepositAdapter.InvalidUSDC.selector);
-        newAdapter.initialize(owner, makeAddr("transmitter"), address(0), queue, zapExecutor);
+        new ERC1967Proxy(address(newImpl), initData);
     }
 
     // =========================================
@@ -109,11 +147,11 @@ contract CCTPCrosschainDepositAdapter_Test is Test {
     // constants
     // =========================================
 
-    function test_SupportedMessageVersion() public view {
+    function test_SupportedMessageVersion() public {
         assertEq(adapter.SUPPORTED_MESSAGE_VERSION(), 1);
     }
 
-    function test_SupportedBodyVersion() public view {
+    function test_SupportedBodyVersion() public {
         assertEq(adapter.SUPPORTED_BODY_VERSION(), 1);
     }
 }

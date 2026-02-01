@@ -7,3 +7,6 @@ solc_version = "0.8.28"
 via_ir = true
 
 # See more config options https://book.getfoundry.sh/reference/config.html
+
+# Coverage configuration
+# Run: forge coverage --exclude-tests --skip script --ir-minimum

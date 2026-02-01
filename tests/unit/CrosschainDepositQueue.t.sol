@@ -5,10 +5,11 @@ import { Test } from "forge-std/Test.sol";
 import { CrosschainDepositQueue } from "../../src/adapters/CrosschainDepositQueue.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 import { ICrosschainDepositQueue } from "../../src/interfaces/ICrosschainDepositQueue.sol";
-import { IVaultBase } from "../../src/interfaces/IVaultBase.sol";
 import { Call } from "../../src/interfaces/IVaultBase.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 contract CrosschainDepositQueue_Test is Test {
+    CrosschainDepositQueue public implementation;
     CrosschainDepositQueue public queue;
     ERC20Mock public token;
     address public owner;
@@ -24,8 +25,20 @@ contract CrosschainDepositQueue_Test is Test {
 
         token = new ERC20Mock();
 
-        queue = new CrosschainDepositQueue();
-        queue.initialize(owner);
+        // Deploy implementation
+        implementation = new CrosschainDepositQueue();
+
+        bytes memory initData = abi.encodeWithSelector(
+            CrosschainDepositQueue.initialize.selector,
+            owner
+        );
+
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            initData
+        );
+
+        queue = CrosschainDepositQueue(payable(address(proxy)));
 
         vm.prank(owner);
         queue.setAdapterRegistration(adapter, true);
@@ -38,16 +51,21 @@ contract CrosschainDepositQueue_Test is Test {
     // initialize
     // =========================================
 
-    function test_Initialize_SetsOwner() public {
+    function test_Initialize_SetsOwner() public view {
         assertTrue(queue.hasRole(queue.DEFAULT_ADMIN_ROLE(), owner));
         assertTrue(queue.hasRole(queue.OPERATOR_ROLE(), owner));
     }
 
     function test_Initialize_RevertsWhenZeroOwner() public {
-        CrosschainDepositQueue newQueue = new CrosschainDepositQueue();
+        CrosschainDepositQueue newImpl = new CrosschainDepositQueue();
+
+        bytes memory initData = abi.encodeWithSelector(
+            CrosschainDepositQueue.initialize.selector,
+            address(0)
+        );
 
         vm.expectRevert("Invalid owner");
-        newQueue.initialize(address(0));
+        new ERC1967Proxy(address(newImpl), initData);
     }
 
     // =========================================
@@ -301,6 +319,13 @@ contract CrosschainDepositQueue_Test is Test {
             0,
             new Call[](0)
         );
+        vm.stopPrank();
+
+        // Mint tokens again for second deposit
+        token.mint(adapter, amount);
+
+        vm.startPrank(adapter);
+        token.approve(address(queue), amount);
 
         queue.recordFailedDeposit(
             user,

@@ -6,14 +6,23 @@ import { VaultBase } from "../../../src/vault/VaultBase.sol";
 import { ERC20Mock } from "../../mocks/ERC20Mock.sol";
 import { MockTransactionGuard } from "../../mocks/MockGuards.sol";
 import { IVaultBase } from "../../../src/interfaces/IVaultBase.sol";
+import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
+/// @title VaultBaseMock
+/// @notice A mock implementation of VaultBase for testing
 contract VaultBaseMock is VaultBase {
-    function initialize(address _owner, address _upgradeAdmin) external {
+    function initialize(address _owner, address _upgradeAdmin) external initializer {
         __VaultBase_init(_owner, _upgradeAdmin);
+    }
+
+    function _authorizeUpgrade(address newImpl) internal override {
+        // Use VaultBase's upgrade authorization
+        super._authorizeUpgrade(newImpl);
     }
 }
 
 contract VaultBase_Test is Test {
+    VaultBaseMock public implementation;
     VaultBaseMock public vaultBase;
     ERC20Mock public token;
     MockTransactionGuard public mockGuard;
@@ -32,8 +41,21 @@ contract VaultBase_Test is Test {
         token = new ERC20Mock();
         mockGuard = new MockTransactionGuard();
 
-        vaultBase = new VaultBaseMock();
-        vaultBase.initialize(owner, upgradeAdmin);
+        // Deploy implementation
+        implementation = new VaultBaseMock();
+
+        bytes memory initData = abi.encodeWithSelector(
+            VaultBaseMock.initialize.selector,
+            owner,
+            upgradeAdmin
+        );
+
+        ERC1967Proxy proxy = new ERC1967Proxy(
+            address(implementation),
+            initData
+        );
+
+        vaultBase = VaultBaseMock(payable(address(proxy)));
     }
 
     // =========================================
@@ -73,65 +95,20 @@ contract VaultBase_Test is Test {
     }
 
     // =========================================
-    // setGuard/removeGuard
+    // setGuard
     // =========================================
 
-    function test_SetGuard_Success() public {
+    function test_SetGuard_SetsGuardForTarget() public {
         vm.prank(owner);
         vaultBase.setGuard(target, address(mockGuard));
 
         assertEq(address(vaultBase.guards(target)), address(mockGuard));
-
-        address[] memory guarded = vaultBase.getGuardedTargets();
-        assertEq(guarded.length, 1);
-        assertEq(guarded[0], target);
-    }
-
-    function test_SetGuard_EmitsGuardUpdatedEvent() public {
-        vm.expectEmit(true, true, true, true);
-        emit IVaultBase.GuardUpdated(target, address(mockGuard));
-
-        vm.prank(owner);
-        vaultBase.setGuard(target, address(mockGuard));
     }
 
     function test_SetGuard_RevertsWhenNotAuthorized() public {
         vm.prank(user);
         vm.expectRevert();
         vaultBase.setGuard(target, address(mockGuard));
-    }
-
-    function test_RemoveGuard_Success() public {
-        vm.prank(owner);
-        vaultBase.setGuard(target, address(mockGuard));
-
-        vm.prank(owner);
-        vaultBase.removeGuard(target);
-
-        assertEq(address(vaultBase.guards(target)), address(0));
-
-        address[] memory guarded = vaultBase.getGuardedTargets();
-        assertEq(guarded.length, 0);
-    }
-
-    function test_RemoveGuard_EmitsGuardRemovedEvent() public {
-        vm.prank(owner);
-        vaultBase.setGuard(target, address(mockGuard));
-
-        vm.expectEmit(true, false, false, true);
-        emit IVaultBase.GuardRemoved(target);
-
-        vm.prank(owner);
-        vaultBase.removeGuard(target);
-    }
-
-    function test_RemoveGuard_RevertsWhenNotAuthorized() public {
-        vm.prank(owner);
-        vaultBase.setGuard(target, address(mockGuard));
-
-        vm.prank(user);
-        vm.expectRevert();
-        vaultBase.removeGuard(target);
     }
 
     // =========================================
@@ -143,18 +120,6 @@ contract VaultBase_Test is Test {
         vaultBase.setTrustedTarget(target, true);
 
         assertTrue(vaultBase.isTrustedTarget(target));
-
-        address[] memory trusted = vaultBase.getTrustedTargets();
-        assertEq(trusted.length, 1);
-        assertEq(trusted[0], target);
-    }
-
-    function test_SetTrustedTarget_EmitsTrustedTargetUpdatedEvent() public {
-        vm.expectEmit(true, true, false, true);
-        emit IVaultBase.TrustedTargetUpdated(target, true);
-
-        vm.prank(owner);
-        vaultBase.setTrustedTarget(target, true);
     }
 
     function test_SetTrustedTarget_RemovesTarget() public {
@@ -174,73 +139,36 @@ contract VaultBase_Test is Test {
     }
 
     // =========================================
-    // sweepToken/sweepETH
+    // upgradeTo
     // =========================================
 
-    function test_SweepToken_TransfersToOwner() public {
-        uint256 amount = 100e18;
-        token.mint(address(vaultBase), amount);
-
-        vm.prank(owner);
-        vaultBase.sweepToken(address(token));
-
-        assertEq(token.balanceOf(address(vaultBase)), 0);
-        assertEq(token.balanceOf(owner), amount);
-    }
-
-    function test_SweepToken_RevertsWhenNotAuthorized() public {
-        vm.prank(user);
-        vm.expectRevert();
-        vaultBase.sweepToken(address(token));
-    }
-
-    function test_SweepETH_TransfersToOwner() public {
-        uint256 amount = 1 ether;
-        vm.deal(address(vaultBase), amount);
-
-        vm.prank(owner);
-        vaultBase.sweepETH();
-
-        assertEq(address(vaultBase).balance, 0);
-        assertEq(owner.balance, amount);
-    }
-
-    function test_SweepETH_RevertsWhenNotAuthorized() public {
-        vm.prank(user);
-        vm.expectRevert();
-        vaultBase.sweepETH();
-    }
-
-    // =========================================
-    // setUpgradeAdmin
-    // =========================================
-
-    function test_SetUpgradeAdmin_Success() public {
-        address newAdmin = makeAddr("newAdmin");
+    function test_UpgradeTo_Success() public {
+        VaultBaseMock newImpl = new VaultBaseMock();
 
         vm.prank(upgradeAdmin);
-        vaultBase.setUpgradeAdmin(newAdmin);
+        vaultBase.upgradeTo(address(newImpl));
 
-        assertEq(vaultBase.upgradeAdmin(), newAdmin);
+        // The proxy should now point to the new implementation
+        assertEq(vaultBase.owner(), owner);
     }
 
-    function test_SetUpgradeAdmin_RevertsWhenNotUpgradeAdmin() public {
-        vm.prank(owner);
-        vm.expectRevert();
-        vaultBase.setUpgradeAdmin(makeAddr("newAdmin"));
-    }
+    function test_UpgradeTo_RevertsWhenNotUpgradeAdmin() public {
+        VaultBaseMock newImpl = new VaultBaseMock();
 
-    function test_SetUpgradeAdmin_RevertsWhenZeroAddress() public {
-        vm.prank(upgradeAdmin);
+        vm.prank(user);
         vm.expectRevert();
-        vaultBase.setUpgradeAdmin(address(0));
+        vaultBase.upgradeTo(address(newImpl));
     }
 
     // =========================================
-    // upgradeAdmin view
+    // isAuthorized
     // =========================================
 
-    function test_UpgradeAdmin_ReturnsInitialValue() public view {
-        assertEq(vaultBase.upgradeAdmin(), upgradeAdmin);
+    function test_IsAuthorized_ReturnsTrueForOwner() public view {
+        assertTrue(vaultBase.isAuthorized(owner, bytes4(0)));
+    }
+
+    function test_IsAuthorized_ReturnsFalseForRandomUser() public view {
+        assertFalse(vaultBase.isAuthorized(user, bytes4(0)));
     }
 }

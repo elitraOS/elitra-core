@@ -39,5 +39,10 @@ test:
 		forge test; \
 	fi
 
+.PHONY: coverage
+coverage:
+	@echo "Running coverage (excluding tests and scripts)..."
+	@forge coverage --exclude-tests --skip script --ir-minimum
+
 get-cctp-attestation:
 	curl -s "https://iris-api.circle.com/v2/messages/6?transactionHash=$(TX_HASH)" > cctp-attestation.json
