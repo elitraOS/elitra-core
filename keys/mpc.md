@@ -168,3 +168,24 @@ Policy can be layered on top of MPC, but they solve different problems:
 - **Policy** = Only approved transactions can be signed
 
 For maximum security, use both.
+
+---
+
+## References
+
+### MPC Providers (Automated Backend Ops)
+
+| Provider | Best For |
+|----------|----------|
+| [Fireblocks](https://www.fireblocks.com/) | Enterprise: API-driven signing, policy engine, 100+ blockchains |
+| [Fordefi](https://www.fordefi.com/) | DeFi-native: Built-in tx simulation, smart contract insights |
+| [Dfns](https://www.dfns.co/) | Developer-first: REST API, programmatic key management |
+| [Binance Web3 Wallet](https://www.binance.com/en/web3wallet) | Consumer MPC: 3-party key sharding (user device, Binance cloud, recovery) |
+
+### Real-World Automated Operations
+
+| Entity | Use Case |
+|--------|----------|
+| [Jump Crypto / Cordial Systems](https://cordialsystems.com/) | Built wallet-ops platform managing thousands of automated on-chain transfers for trading. Customizable allowlists + transfer policies. |
+| [Wintermute](https://wintermute.com/) | Automated market making & DeFi liquidity. Uses Hypernative for real-time policy enforcement on farming portfolios. |
+

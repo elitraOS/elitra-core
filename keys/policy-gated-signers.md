@@ -302,3 +302,28 @@ async function executeRebalance() {
 }
 ```
 
+---
+
+## References
+
+### AWS KMS for Automated Signing
+
+| Resource | Description |
+|----------|-------------|
+| [AWS KMS secp256k1](https://docs.aws.amazon.com/kms/latest/developerguide/asymmetric-key-specs.html) | `ECC_SECG_P256K1` key spec for Ethereum signing |
+| [ethers-aws-kms-signer](https://github.com/fondant-app/ethers-aws-kms-signer) | Open-source adapter: KMS → EVM signature |
+
+### Transaction Simulation (Policy Engine)
+
+| Provider | Usage |
+|----------|-------|
+| [Tenderly](https://tenderly.co/) | Tx simulation, state diffing, gas estimation |
+| [Alchemy Transact](https://www.alchemy.com/transact) | Simulation APIs for pre-flight validation |
+
+### Real-World Automated Operations
+
+| Entity | Use Case |
+|--------|----------|
+| [Jump Crypto / Cordial Systems](https://cordialsystems.com/) | Self-hosted wallet-ops with customizable allowlists, access rules, transfer policies. Manages thousands of automated transfers. |
+| [Wintermute](https://wintermute.com/) | Automated trading/market making. Uses Hypernative for real-time policy enforcement on DeFi farming. |
+
