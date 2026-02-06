@@ -5,6 +5,7 @@ import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { TakaraPoolGuard } from "../../src/guards/sei/TakaraPoolGuard.sol";
 import { TakaraControllerGuard } from "../../src/guards/sei/TakaraControllerGuard.sol";
+import { ElitraVault } from "../../src/ElitraVault.sol";
 
 /**
  * @title Deploy_TakaraGuards
@@ -13,6 +14,7 @@ import { TakaraControllerGuard } from "../../src/guards/sei/TakaraControllerGuar
  *
  * Required environment variables:
  * - PRIVATE_KEY: Deployer private key
+ * - VAULT_ADDRESS: The Elitra vault address that will be protected
  *
  * SEI Mainnet addresses:
  * - Takara SEI Pool: 0xA26b9BFe606d29F16B5Aecf30F9233934452c4E2
@@ -28,28 +30,43 @@ contract Deploy_TakaraGuards is Script {
     function run() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
         address deployer = vm.addr(deployerPrivateKey);
+        address vaultAddress = vm.envAddress("VAULT_ADDRESS");
 
         console2.log("\n=== Deployment Configuration ===");
         console2.log("Deployer:", deployer);
+        console2.log("Vault:", vaultAddress);
 
         vm.startBroadcast(deployerPrivateKey);
+
+        ElitraVault vault = ElitraVault(payable(vaultAddress));
 
         // Deploy TakaraPoolGuard for SEI pool
         console2.log("\nDeploying TakaraPoolGuard for SEI pool...");
         TakaraPoolGuard poolGuard = new TakaraPoolGuard();
         console2.log("TakaraPoolGuard:", address(poolGuard));
 
-
         // Deploy TakaraControllerGuard
         console2.log("\nDeploying TakaraControllerGuard...");
         TakaraControllerGuard controllerGuard = new TakaraControllerGuard();
         console2.log("TakaraControllerGuard:", address(controllerGuard));
+
+        // Set guards for Takara pools
+        console2.log("\nSetting guards on vault...");
+        vault.setGuard(TAKARA_SEI_POOL, address(poolGuard));
+        console2.log("  Set guard for Takara SEI Pool:", TAKARA_SEI_POOL);
+
+        vault.setGuard(TAKARA_USDC_POOL, address(poolGuard));
+        console2.log("  Set guard for Takara USDC Pool:", TAKARA_USDC_POOL);
+
+        vault.setGuard(TAKARA_COMPTROLLER, address(controllerGuard));
+        console2.log("  Set guard for Takara Comptroller:", TAKARA_COMPTROLLER);
 
         vm.stopBroadcast();
 
         console2.log("\n=== Deployment Summary ===");
         console2.log("TakaraPoolGuard:", address(poolGuard));
         console2.log("TakaraControllerGuard:", address(controllerGuard));
+        console2.log("Guards set on vault:", vaultAddress);
     }
 
     function test() public {

@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { MorphoVaultGuard } from "../../src/guards/sei/MorphoVaultGuard.sol";
+import { ElitraVault } from "../../src/ElitraVault.sol";
 
 /**
  * @title Deploy_MorphoGuards
@@ -34,23 +35,26 @@ contract Deploy_MorphoGuards is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
+        ElitraVault vault = ElitraVault(payable(vaultAddress));
+
         // Deploy MorphoVaultGuard
         console2.log("\nDeploying MorphoVaultGuard...");
         MorphoVaultGuard morphoGuard = new MorphoVaultGuard(vaultAddress);
         console2.log("MorphoVaultGuard:", address(morphoGuard));
 
+        // Set guards for Morpho vaults
+        console2.log("\nSetting guards on vault...");
+        vault.setGuard(MORPHO_SEI_VAULT, address(morphoGuard));
+        console2.log("  Set guard for Morpho SEI Vault:", MORPHO_SEI_VAULT);
+
+        vault.setGuard(MORPHO_USDC_VAULT, address(morphoGuard));
+        console2.log("  Set guard for Morpho USDC Vault:", MORPHO_USDC_VAULT);
+
         vm.stopBroadcast();
 
         console2.log("\n=== Deployment Summary ===");
         console2.log("MorphoVaultGuard:", address(morphoGuard));
-
-        console2.log("\n=== Next Steps ===");
-        console2.log("Set guards on your vault for each Morpho vault:");
-        console2.log("  vault.setGuard(MORPHO_SEI_VAULT, MORPHO_GUARD)");
-        console2.log("  vault.setGuard(MORPHO_USDC_VAULT, MORPHO_GUARD)");
-        console2.log("");
-        console2.log("Morpho SEI Vault:", MORPHO_SEI_VAULT);
-        console2.log("Morpho USDC Vault:", MORPHO_USDC_VAULT);
+        console2.log("Guards set on vault:", vaultAddress);
     }
 
     function test() public {

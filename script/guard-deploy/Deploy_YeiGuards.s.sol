@@ -5,6 +5,7 @@ import { Script } from "forge-std/Script.sol";
 import { console2 } from "forge-std/console2.sol";
 import { YeiPoolGuard } from "../../src/guards/sei/YeiPoolGuard.sol";
 import { YeiIncentivesGuard } from "../../src/guards/sei/YeiIncentivesGuard.sol";
+import { ElitraVault } from "../../src/ElitraVault.sol";
 
 /**
  * @title Deploy_YeiGuards
@@ -39,6 +40,8 @@ contract Deploy_YeiGuards is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
+        ElitraVault vault = ElitraVault(payable(vaultAddress));
+
         // Deploy YeiPoolGuard
         console2.log("\nDeploying YeiPoolGuard...");
         YeiPoolGuard poolGuard = new YeiPoolGuard(deployer, vaultAddress);
@@ -53,6 +56,21 @@ contract Deploy_YeiGuards is Script {
         console2.log("\nDeploying YeiIncentivesGuard...");
         YeiIncentivesGuard incentivesGuard = new YeiIncentivesGuard(deployer);
         console2.log("YeiIncentivesGuard:", address(incentivesGuard));
+
+        // Set guards for Yei
+        console2.log("\nSetting guards on vault...");
+        vault.setGuard(YEI_POOL, address(poolGuard));
+        console2.log("  Set guard for Yei Pool:", YEI_POOL);
+
+        vault.setGuard(YEI_INCENTIVES_CONTROLLER, address(incentivesGuard));
+        console2.log("  Set guard for Yei Incentives Controller:", YEI_INCENTIVES_CONTROLLER);
+
+        vm.stopBroadcast();
+
+        console2.log("\n=== Deployment Summary ===");
+        console2.log("YeiPoolGuard:", address(poolGuard));
+        console2.log("YeiIncentivesGuard:", address(incentivesGuard));
+        console2.log("Guards set on vault:", vaultAddress);
     }
 
     function test() public {
