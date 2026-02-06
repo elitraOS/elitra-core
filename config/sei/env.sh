@@ -14,4 +14,7 @@ if [ -z "$param" ]; then
     return 1 2>/dev/null || exit 1
 fi
 
+export ELITRA_VAULT_FACTORY_ADDRESS=0x4340d6116dd378B32B3D87810Fd2E25C92F21f6D
+export FEE_REGISTRY_ADDRESS=0x7c0B0AFcaF28544bd5AaD9d30c8098f2e1A18A5C
+
 source config/sei/$param/env.sh

@@ -17,6 +17,7 @@ contract SetupRoles is Script {
     uint8 public constant MANAGER_ROLE = 0;
     uint8 public constant ORACLE_ROLE = 1;
     uint8 public constant KEEPER_ROLE = 2;
+    uint8 public constant OPERATOR_ROLE = 3;
 
     function run() public {
         uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
@@ -99,13 +100,21 @@ contract SetupRoles is Script {
         authority.setRoleCapability(KEEPER_ROLE, vaultAddress, ElitraVault.cancelRedeem.selector, true);
         console2.log("   - Can call cancelRedeem()");
 
+        // Configure OPERATOR_ROLE capabilities
+        console2.log("\n6. Configuring OPERATOR_ROLE capabilities...");
+
+        // Operator can call manageBatchWithDelta()
+        authority.setRoleCapability(OPERATOR_ROLE, vaultAddress, ElitraVault.manageBatchWithDelta.selector, true);
+        console2.log("   - Can call manageBatchWithDelta()");
+
         vm.stopBroadcast();
 
         console2.log("\n=== Setup Complete ===");
         console2.log("Roles configured:");
-        console2.log("  MANAGER_ROLE (0):", deployer);
-        console2.log("  ORACLE_ROLE  (1): Not assigned (assign as needed)");
-        console2.log("  KEEPER_ROLE  (2): Not assigned (assign as needed)");
+        console2.log("  MANAGER_ROLE  (0):", deployer);
+        console2.log("  ORACLE_ROLE   (1):", deployer);
+        console2.log("  KEEPER_ROLE   (2): Not assigned (assign as needed)");
+        console2.log("  OPERATOR_ROLE (3): Not assigned (assign as needed)");
         console2.log("\nTo assign additional roles:");
         console2.log("  cast send", rolesAuthorityAddress);
         console2.log("    'setUserRole(address,uint8,bool)' <user> <role> true");
