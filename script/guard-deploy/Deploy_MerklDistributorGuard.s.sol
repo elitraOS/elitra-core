@@ -16,7 +16,7 @@ import { ElitraVault } from "../../src/ElitraVault.sol";
  * - VAULT_ADDRESS: The Elitra vault address that will be protected
  *
  * SEI Mainnet addresses (from guard-registry docs):
- * - Merkl Distributor: 0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae
+ * - Merkl Distributor: 0x3Ef3D8bA38EBeye18DB133cEc108f4D14CE00Dd9Ae
  */
 contract Deploy_MerklDistributorGuard is Script {
     // SEI Mainnet Merkl Distributor address

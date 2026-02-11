@@ -19,7 +19,7 @@ import { ElitraVault } from "../../src/ElitraVault.sol";
  */
 contract Deploy_USDCTokenGuard is Script {
     // SEI Mainnet USDC address
-    address constant USDC = 0x3894085Ef7Ff0f0aeDf52E2A2704928d1Ec074F1;
+    address constant USDC = 0xe15fC38F6D8c56aF07bbCBe3BAf5708A2Bf42392;
 
     // Whitelisted spenders from guard-registry/sei/usdc.md
     address constant YEI_POOL = 0x4a4d9abD36F923cBA0Af62A39C01dEC2944fb638;
