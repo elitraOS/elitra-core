@@ -39,6 +39,9 @@ async function main() {
   
   // The address we want to send TO
   const destinationAddress = "0xD4B5314E9412dBC1c772093535dF451a1E2Af1A4";
+  // const authorizedwallet= "0xD4B5314E9412dBC1c772093535dF451a1E2Af1A4";
+  // const notauthorizedwallet= "0xED20be1edaFc77800594F2996dE7329a4d9C1B6A";
+
   const amount = "0.1";
   const rpcUrl = process.env.RPC_URL || "https://evm-rpc.sei-apis.com";
 

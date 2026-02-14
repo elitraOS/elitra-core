@@ -65,6 +65,10 @@ contract Deploy_YeiGuards is Script {
         vault.setGuard(YEI_INCENTIVES_CONTROLLER, address(incentivesGuard));
         console2.log("  Set guard for Yei Incentives Controller:", YEI_INCENTIVES_CONTROLLER);
 
+        // Whitelist common assets
+        console2.log("\nWhitelisting common assets...");
+        incentivesGuard.setAssets([WSEI, USDC], true);
+        console2.log("  Whitelisted WSEI and USDC");
         vm.stopBroadcast();
 
         console2.log("\n=== Deployment Summary ===");
