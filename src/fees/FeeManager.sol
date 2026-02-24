@@ -253,12 +253,15 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         if (newRates.managementRate > MAX_MANAGEMENT_RATE) revert AboveMaxRate(MAX_MANAGEMENT_RATE);
         if (newRates.performanceRate > MAX_PERFORMANCE_RATE) revert AboveMaxRate(MAX_PERFORMANCE_RATE);
 
+        // Checkpoint fees under the currently active rates before changing rate state
+        _takeFees();
+
         FeeManagerStorage storage $ = _getFeeManagerStorage();
 
         // Schedule new rates to activate after cooldown.
         uint256 applyTs = block.timestamp + $.cooldown;
         // Snapshot current rates for the cooldown window.
-        Rates memory current = $.rates;
+        Rates memory current = feeRates();
 
         $.newRatesTimestamp = applyTs;
         $.oldRates = current;
