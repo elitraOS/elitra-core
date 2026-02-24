@@ -23,6 +23,10 @@ contract ZapExecutor {
     // Raised when vault deposit mints zero shares.
     error DepositFailedNoShares();
 
+    /// @notice Allow contract to receive native tokens (e.g., from WETH withdrawals)
+    /// @dev Required for zap paths that involve native tokens
+    receive() external payable {}
+
     /**
      * @notice Execute zap and deposit to vault
      * @param tokenIn Input token address
@@ -41,7 +45,7 @@ contract ZapExecutor {
         address receiver,
         uint256 minAmountOut,
         Call[] calldata zapCalls
-    ) external returns (uint256 shares) {
+    ) external payable returns (uint256 shares) {
         // 1. Pull funds from Adapter.
         // (Adapter must have approved this contract beforehand.)
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
