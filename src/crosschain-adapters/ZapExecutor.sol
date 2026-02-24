@@ -22,6 +22,8 @@ contract ZapExecutor {
     error ZapProducedNoOutput();
     // Raised when vault deposit mints zero shares.
     error DepositFailedNoShares();
+    // Raised when native ETH transfer fails.
+    error NativeTransferFailed();
 
     /**
      * @notice Execute zap and deposit to vault
@@ -66,9 +68,10 @@ contract ZapExecutor {
 
         if (shares == 0) revert DepositFailedNoShares();
 
-        // Sweep any leftover tokens/native to keep executor stateless.
-        sweepToken(tokenIn);
-        sweepNative();
+        // Sweep any leftover tokens/native directly to the receiver
+        _sweepTokenTo(tokenIn, receiver);
+        _sweepTokenTo(asset, receiver);
+        _sweepNativeTo(receiver);
     }
 
     /// @notice Sweep any remaining token dust from the contract
@@ -76,8 +79,7 @@ contract ZapExecutor {
     /// @dev Contract is designed to be stateless - allows anyone to sweep dust tokens
     function sweepToken(address token) public {
         // Anyone can sweep dust since the contract should be stateless.
-        if (IERC20(token).balanceOf(address(this)) == 0) return;
-        IERC20(token).safeTransfer(msg.sender, IERC20(token).balanceOf(address(this)));
+        _sweepTokenTo(token, msg.sender);
     }
 
     /// @notice Sweep any remaining native currency from the contract
@@ -88,5 +90,20 @@ contract ZapExecutor {
         if (bal == 0) return;
         (bool ok, ) = payable(msg.sender).call{ value: bal }("");
         if (!ok) revert ZapFailed();
+    }
+
+    function _sweepTokenTo(address token, address to) internal {
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        if (balance > 0) {
+            IERC20(token).safeTransfer(to, balance);
+        }
+    }
+
+    function _sweepNativeTo(address to) internal {
+        uint256 balance = address(this).balance;
+        if (balance > 0) {
+            (bool success, ) = to.call{value: balance}("");
+            if (!success) revert NativeTransferFailed();
+        }
     }
 }
