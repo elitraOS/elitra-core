@@ -258,7 +258,7 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         // Schedule new rates to activate after cooldown.
         uint256 applyTs = block.timestamp + $.cooldown;
         // Snapshot current rates for the cooldown window.
-        Rates memory current = $.rates;
+        Rates memory current = feeRates();
 
         $.newRatesTimestamp = applyTs;
         $.oldRates = current;
