@@ -110,10 +110,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
 
         // Update cached balances and PPS.
+        uint256 oldPPS = lastPricePerShare;
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
 
-        emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
+        emit PPSUpdated(block.timestamp, oldPPS, newPPS);
     }
 
     /// @notice Update the vault's aggregated underlying balance and price per share
