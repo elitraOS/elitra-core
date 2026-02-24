@@ -338,9 +338,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function getAvailableBalance() public view returns (uint256) {
-        // Available = idle assets minus queued redemptions.
+        // Available = idle assets minus queued redemptions and pending fees.
         uint256 balance = IERC20(asset()).balanceOf(address(this));
-        return balance > totalPendingAssets ? balance - totalPendingAssets : 0;
+        uint256 reserved = totalPendingAssets + pendingFees();
+        return balance > reserved ? balance - reserved : 0;
     }
 
     /// @inheritdoc IElitraVault
