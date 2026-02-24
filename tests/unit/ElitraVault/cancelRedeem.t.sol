@@ -34,7 +34,7 @@ contract CancelRedeem_Test is ElitraVault_Base_Test {
 
         vm.roll(block.number + 1);
         vm.prank(alice);
-        vault.requestRedeem(500e6, alice, alice);
+        vault.requestRedeem(500e6, alice);
     }
 
     function test_CancelRedeem_ReturnsSharesAtCurrentPrice() public {

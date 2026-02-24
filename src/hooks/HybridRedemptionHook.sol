@@ -9,7 +9,7 @@ import { IElitraVault } from "../interfaces/IElitraVault.sol";
 contract HybridRedemptionHook is IRedemptionHook {
     event RedemptionProcessed(
         address indexed vault,
-        address indexed receiver,
+        address indexed owner,
         RedemptionMode mode,
         uint256 assets
     );
@@ -19,23 +19,22 @@ contract HybridRedemptionHook is IRedemptionHook {
         IElitraVault vault,
         uint256, /* shares */
         uint256 assets,
-        address, /* owner */
-        address receiver
+        address owner
     ) external returns (RedemptionMode mode, uint256 actualAssets) {
         uint256 availableBalance = vault.getAvailableBalance();
 
         if (availableBalance >= assets) {
-            emit RedemptionProcessed(address(vault), receiver, RedemptionMode.INSTANT, assets);
+            emit RedemptionProcessed(address(vault), owner, RedemptionMode.INSTANT, assets);
             return (RedemptionMode.INSTANT, assets);
         } else {
-            emit RedemptionProcessed(address(vault), receiver, RedemptionMode.QUEUED, assets);
+            emit RedemptionProcessed(address(vault), owner, RedemptionMode.QUEUED, assets);
             return (RedemptionMode.QUEUED, assets);
         }
     }
 
     /// @inheritdoc IRedemptionHook
     function afterRedeem(
-        address, /* receiver */
+        address, /* owner */
         uint256, /* shares */
         uint256, /* assets */
         bool /* instant */

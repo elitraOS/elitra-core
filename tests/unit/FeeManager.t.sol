@@ -497,7 +497,7 @@ contract FeeManagerTest is Test {
 
         // requestRedeem will call takeFees internally, changing the share price
         // So we need to get a fresh preview after that
-        vault.requestRedeem(redeemAmount, alice, alice);
+        vault.requestRedeem(redeemAmount, alice);
         vm.stopPrank();
 
         // The actual received should be less than the redeem amount due to fee
@@ -694,7 +694,7 @@ contract FeeManagerTest is Test {
 
         // 4. Alice withdraws
         vm.startPrank(alice);
-        uint256 assetsOut = vault.requestRedeem(aliceShares, alice, alice);
+        uint256 assetsOut = vault.requestRedeem(aliceShares, alice);
         vm.stopPrank();
 
         // Alice should get more than she deposited (profit minus fees)
@@ -747,7 +747,7 @@ contract FeeManagerTest is Test {
         uint256 aliceExpected = vault.previewRedeem(vault.balanceOf(alice));
 
         vm.startPrank(alice);
-        uint256 aliceReceived = vault.requestRedeem(vault.balanceOf(alice), alice, alice);
+        uint256 aliceReceived = vault.requestRedeem(vault.balanceOf(alice), alice);
         vm.stopPrank();
 
         // Allow small rounding difference
