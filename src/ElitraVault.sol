@@ -110,10 +110,11 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         emit UnderlyingBalanceUpdated(block.timestamp, aggregatedUnderlyingBalances, newAggregatedBalance);
 
         // Update cached balances and PPS.
+        uint256 oldPPS = lastPricePerShare;
         aggregatedUnderlyingBalances = newAggregatedBalance;
         lastPricePerShare = newPPS;
 
-        emit PPSUpdated(block.timestamp, lastPricePerShare, newPPS);
+        emit PPSUpdated(block.timestamp, oldPPS, newPPS);
     }
 
     /// @notice Update the vault's aggregated underlying balance and price per share
@@ -229,20 +230,14 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
             // Queue the redemption: burn shares now, transfer assets later.
             _requireFreshNav();
             _burn(owner, shares);
-
-            // Queued path: only the queued fee applies (no instant withdrawFee).
-            (, , uint256 queuedFee, ) = _feeConfig();
-            uint256 feeAmount = _feeOnTotal(actualGrossAssets, queuedFee);
-            uint256 assetsAfterFee = actualGrossAssets - feeAmount;
-            _addPendingFees(feeAmount);
-
+            
             // Track reserved assets to exclude from NAV.
-            totalPendingAssets += assetsAfterFee;
+            totalPendingAssets += actualAssets;
 
             PendingRedeem storage pending = _pendingRedeem[receiver];
-            pending.assets += assetsAfterFee;
+            pending.assets += actualAssets;
 
-            emit RedeemRequest(receiver, owner, assetsAfterFee, shares, false);
+            emit RedeemRequest(receiver, owner, actualAssets, shares, false);
             return REQUEST_ID;
         } else {
             revert Errors.InvalidRedemptionMode();
@@ -262,9 +257,18 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
+        // Calculate and accumulate queued redeem fee on the fulfilled amount.
+        (, , uint256 queuedFee, ) = _feeConfig();
+        uint256 feeAmount = _feeOnTotal(assets, queuedFee);
+        uint256 assetsAfterFee = assets - feeAmount;
+
+        _addPendingFees(feeAmount);
+
+        // Emit fulfilled amount (before fee reduction) to match pending decrement
         emit RequestFulfilled(receiver, assets);
-        // Shares already burned at request time; just transfer assets.
-        IERC20(asset()).safeTransfer(receiver, assets);
+        
+        // Shares already burned at request time; transfer assets minus fee.
+        IERC20(asset()).safeTransfer(receiver, assetsAfterFee);
     }
 
     /// @inheritdoc IElitraVault
@@ -342,9 +346,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function getAvailableBalance() public view returns (uint256) {
-        // Available = idle assets minus queued redemptions.
+        // Available = idle assets minus queued redemptions and pending fees.
         uint256 balance = IERC20(asset()).balanceOf(address(this));
-        return balance > totalPendingAssets ? balance - totalPendingAssets : 0;
+        uint256 reserved = totalPendingAssets + pendingFees();
+        return balance > reserved ? balance - reserved : 0;
     }
 
     /// @inheritdoc IElitraVault
