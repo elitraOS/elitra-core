@@ -51,11 +51,12 @@ abstract contract BaseCrosschainDepositAdapter is
     ZapExecutor public zapExecutor;
 
     // ================== ERRORS ==================
-    
+
     error VaultNotSupported();
     error InvalidReceiver();
     error TokenMismatch();
     error InvalidZapExecutor();
+    error SlippageExceeded();
 
     // ================== INIT ==================
 
@@ -168,6 +169,9 @@ abstract contract BaseCrosschainDepositAdapter is
             // Approve and deposit directly into the vault.
             IERC20(asset).forceApprove(vault, amount);
             shares = IElitraVault(vault).deposit(amount, receiver);
+
+            // Ensure user received minimum expected shares.
+            if (shares < minAmountOut) revert SlippageExceeded();
 
             // Reset approval for defensive safety.
             IERC20(asset).forceApprove(vault, 0);
