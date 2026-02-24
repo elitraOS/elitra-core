@@ -84,7 +84,9 @@ contract ZapExecutor {
     /// @dev Contract is designed to be stateless - allows anyone to sweep dust native currency
     function sweepNative() public {
         // Sweep any native dust (e.g., from swap refunds).
-        if (address(this).balance == 0) return;
-        payable(msg.sender).transfer(address(this).balance);
+        uint256 bal = address(this).balance;
+        if (bal == 0) return;
+        (bool ok, ) = payable(msg.sender).call{ value: bal }("");
+        if (!ok) revert ZapFailed();
     }
 }
