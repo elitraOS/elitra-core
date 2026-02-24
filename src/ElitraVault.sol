@@ -208,30 +208,34 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         // Accrue management/performance fees before computing redemption value.
         _takeFees();
 
-        // Convert shares to assets after exit fee preview.
-        uint256 assets = previewRedeem(shares);
+        // Gross assets before any exit fee.
+        uint256 grossAssets = super.previewRedeem(shares);
 
-        // Ask strategy how to handle this redemption
-        // Ask strategy/hook to choose redemption mode and adjust assets if needed.
-        (RedemptionMode mode, uint256 actualAssets) = redemptionHook.beforeRedeem(this, shares, assets, owner, receiver);
+        // Ask the strategy/hook to choose redemption mode.
+        (RedemptionMode mode, uint256 actualGrossAssets) =
+            redemptionHook.beforeRedeem(this, shares, grossAssets, owner, receiver);
 
         if (mode == RedemptionMode.INSTANT) {
             // Instant redemptions require fresh NAV.
             _requireFreshNav();
-            _withdraw(owner, receiver, owner, actualAssets, shares);
-            emit RedeemRequest(receiver, owner, actualAssets, shares, true);
-            return actualAssets;
+            // _withdraw internally deducts withdrawFee from actualGrossAssets
+            // and sends the net amount to the receiver. Fee fires exactly once.
+            _withdraw(owner, receiver, owner, actualGrossAssets, shares);
+            (, uint256 withdrawFee, , ) = _feeConfig();
+            uint256 assetsToUser = actualGrossAssets - _feeOnTotal(actualGrossAssets, withdrawFee);
+            emit RedeemRequest(receiver, owner, assetsToUser, shares, true);
+            return assetsToUser;
         } else if (mode == RedemptionMode.QUEUED) {
-            // Queue the redemption: burn shares and reserve assets.
+            // Queue the redemption: burn shares now, transfer assets later.
             _requireFreshNav();
             _burn(owner, shares);
-            
-            // Calculate and accumulate queued redeem fee (inclusive).
+
+            // Queued path: only the queued fee applies (no instant withdrawFee).
             (, , uint256 queuedFee, ) = _feeConfig();
-            uint256 feeAmount = _feeOnTotal(actualAssets, queuedFee);
-            uint256 assetsAfterFee = actualAssets - feeAmount;
+            uint256 feeAmount = _feeOnTotal(actualGrossAssets, queuedFee);
+            uint256 assetsAfterFee = actualGrossAssets - feeAmount;
             _addPendingFees(feeAmount);
-            
+
             // Track reserved assets to exclude from NAV.
             totalPendingAssets += assetsAfterFee;
 
