@@ -67,7 +67,7 @@ contract Deploy_YeiGuards is Script {
 
         // Whitelist common assets
         console2.log("\nWhitelisting common assets...");
-        incentivesGuard.setAssets([WSEI, USDC], true);
+        incentivesGuard.setAsset(USDC, true);
         console2.log("  Whitelisted WSEI and USDC");
         vm.stopBroadcast();
 
