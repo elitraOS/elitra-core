@@ -226,19 +226,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
             _requireFreshNav();
             _burn(owner, shares);
             
-            // Calculate and accumulate queued redeem fee (inclusive).
-            (, , uint256 queuedFee, ) = _feeConfig();
-            uint256 feeAmount = _feeOnTotal(actualAssets, queuedFee);
-            uint256 assetsAfterFee = actualAssets - feeAmount;
-            _addPendingFees(feeAmount);
-            
             // Track reserved assets to exclude from NAV.
-            totalPendingAssets += assetsAfterFee;
+            totalPendingAssets += actualAssets;
 
             PendingRedeem storage pending = _pendingRedeem[receiver];
-            pending.assets += assetsAfterFee;
+            pending.assets += actualAssets;
 
-            emit RedeemRequest(receiver, owner, assetsAfterFee, shares, false);
+            emit RedeemRequest(receiver, owner, actualAssets, shares, false);
             return REQUEST_ID;
         } else {
             revert Errors.InvalidRedemptionMode();
@@ -258,9 +252,18 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
+        // Calculate and accumulate queued redeem fee on the fulfilled amount.
+        (, , uint256 queuedFee, ) = _feeConfig();
+        uint256 feeAmount = _feeOnTotal(assets, queuedFee);
+        uint256 assetsAfterFee = assets - feeAmount;
+
+        _addPendingFees(feeAmount);
+
+        // Emit fulfilled amount (before fee reduction) to match pending decrement
         emit RequestFulfilled(receiver, assets);
-        // Shares already burned at request time; just transfer assets.
-        IERC20(asset()).safeTransfer(receiver, assets);
+        
+        // Shares already burned at request time; transfer assets minus fee.
+        IERC20(asset()).safeTransfer(receiver, assetsAfterFee);
     }
 
     /// @inheritdoc IElitraVault
