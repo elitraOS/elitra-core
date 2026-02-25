@@ -24,7 +24,7 @@ interface ICrosschainDepositQueue {
         bytes failureReason;
         uint256 timestamp;
         uint256 sharePrice; // PPS at the time of failure
-        uint256 minAmountOut; // Original attested minAmountOut
+        uint256 minSharesOut; // User-defined minimum shares (protects against slippage in both zap and vault deposit)
         bytes32 zapCallsHash; // Hash of original attested zapCalls for verification
         DepositStatus status;
     }
@@ -63,7 +63,7 @@ interface ICrosschainDepositQueue {
      * @param guid LayerZero GUID
      * @param reason Failure reason
      * @param sharePrice Price per share at time of failure
-     * @param minAmountOut Original attested minAmountOut for zap
+     * @param minSharesOut User-defined minimum shares (protects end-to-end slippage)
      * @param zapCalls Original attested zapCalls for zap
      */
     function recordFailedDeposit(
@@ -75,7 +75,7 @@ interface ICrosschainDepositQueue {
         bytes32 guid,
         bytes calldata reason,
         uint256 sharePrice,
-        uint256 minAmountOut,
+        uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external;
 
@@ -89,13 +89,12 @@ interface ICrosschainDepositQueue {
      * @notice Fulfill a failed deposit in one step. If the failed token matches the vault asset, deposit directly.
      *         Otherwise, use ZapExecutor to swap then deposit using the originally attested zapCalls.
      * @param depositId The failed deposit id
-     * @param minSharesOut Minimum shares the user must receive
      * @param zapCalls Original attested zapCalls (verified against stored hash)
      * @return sharesOut Shares minted to the user
+     * @dev Uses the minSharesOut stored in the FailedDeposit record (provided by user at source chain)
      */
     function fulfillFailedDeposit(
         uint256 depositId,
-        uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external returns (uint256 sharesOut);
 
