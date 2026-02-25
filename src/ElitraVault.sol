@@ -211,31 +211,13 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         // Gross assets before any exit fee.
         uint256 grossAssets = super.previewRedeem(shares);
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-        // Ask strategy how to handle this redemption
-        // Ask strategy/hook to choose redemption mode and adjust assets if needed.
-        (RedemptionMode mode, uint256 actualAssets) = redemptionHook.beforeRedeem(this, shares, assets, owner, receiver);
-=======
         // Ask the strategy/hook to choose redemption mode.
         (RedemptionMode mode, uint256 actualGrossAssets) =
             redemptionHook.beforeRedeem(this, shares, grossAssets, owner);
->>>>>>> Stashed changes
-=======
-        // Ask the strategy/hook to choose redemption mode.
-        (RedemptionMode mode, uint256 actualGrossAssets) =
-            redemptionHook.beforeRedeem(this, shares, grossAssets, owner, receiver);
->>>>>>> main
 
         if (mode == RedemptionMode.INSTANT) {
             // Instant redemptions require fresh NAV.
             _requireFreshNav();
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-            _withdraw(owner, receiver, owner, actualAssets, shares);
-            emit RedeemRequest(receiver, owner, actualAssets, shares, true);
-            return actualAssets;
-=======
             // _withdraw internally deducts withdrawFee from actualGrossAssets
             // and sends the net amount to the owner. Fee fires exactly once.
             _withdraw(owner, owner, owner, actualGrossAssets, shares);
@@ -243,35 +225,18 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
             uint256 assetsToUser = actualGrossAssets - _feeOnTotal(actualGrossAssets, withdrawFee);
             emit RedeemRequest(owner, assetsToUser, shares, true);
             return assetsToUser;
->>>>>>> Stashed changes
-=======
-            // _withdraw internally deducts withdrawFee from actualGrossAssets
-            // and sends the net amount to the receiver. Fee fires exactly once.
-            _withdraw(owner, receiver, owner, actualGrossAssets, shares);
-            (, uint256 withdrawFee, , ) = _feeConfig();
-            uint256 assetsToUser = actualGrossAssets - _feeOnTotal(actualGrossAssets, withdrawFee);
-            emit RedeemRequest(receiver, owner, assetsToUser, shares, true);
-            return assetsToUser;
->>>>>>> main
         } else if (mode == RedemptionMode.QUEUED) {
             // Queue the redemption: burn shares now, transfer assets later.
             _requireFreshNav();
             _burn(owner, shares);
             
             // Track reserved assets to exclude from NAV.
-            totalPendingAssets += actualAssets;
+            totalPendingAssets += actualGrossAssets;
 
-<<<<<<< HEAD
             PendingRedeem storage pending = _pendingRedeem[owner];
-            pending.assets += assetsAfterFee;
+            pending.assets += actualGrossAssets;
 
-            emit RedeemRequest(owner, assetsAfterFee, shares, false);
-=======
-            PendingRedeem storage pending = _pendingRedeem[receiver];
-            pending.assets += actualAssets;
-
-            emit RedeemRequest(receiver, owner, actualAssets, shares, false);
->>>>>>> main
+            emit RedeemRequest(owner, actualGrossAssets, shares, false);
             return REQUEST_ID;
         } else {
             revert Errors.InvalidRedemptionMode();
@@ -291,11 +256,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
-<<<<<<< HEAD
-        emit RequestFulfilled(owner, assets);
-        // Shares already burned at request time; just transfer assets.
-        IERC20(asset()).safeTransfer(owner, assets);
-=======
         // Calculate and accumulate queued redeem fee on the fulfilled amount.
         (, , uint256 queuedFee, ) = _feeConfig();
         uint256 feeAmount = _feeOnTotal(assets, queuedFee);
@@ -303,12 +263,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
         _addPendingFees(feeAmount);
 
-        // Emit fulfilled amount (before fee reduction) to match pending decrement
-        emit RequestFulfilled(receiver, assets);
+        emit RequestFulfilled(owner, assets);
         
         // Shares already burned at request time; transfer assets minus fee.
-        IERC20(asset()).safeTransfer(receiver, assetsAfterFee);
->>>>>>> main
+        IERC20(asset()).safeTransfer(owner, assetsAfterFee);
     }
 
     /// @inheritdoc IElitraVault
