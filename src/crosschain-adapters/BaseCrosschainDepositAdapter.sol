@@ -75,7 +75,7 @@ abstract contract BaseCrosschainDepositAdapter is
 
         // Wire optional queue and zap executor.
         depositQueue = _queue;
-        zapExecutor = ZapExecutor(_zapExecutor);
+        zapExecutor = ZapExecutor(payable(_zapExecutor));
     }
 
     // ================== CORE LOGIC ==================
@@ -279,7 +279,7 @@ abstract contract BaseCrosschainDepositAdapter is
     /// @param _executor Address of the ZapExecutor contract
     function setZapExecutor(address _executor) external onlyOwner {
         // Allow owner to rotate zap executor implementation.
-        zapExecutor = ZapExecutor(_executor);
+        zapExecutor = ZapExecutor(payable(_executor));
     }
 
     /// @notice Set the deposit queue contract address

@@ -187,7 +187,7 @@ contract CrosschainDepositQueue is
             // Approve executor for this amount.
             IERC20(deposit.token).forceApprove(zapExecutor, deposit.amount);
 
-            sharesOut = ZapExecutor(zapExecutor).executeZapAndDeposit(
+            sharesOut = ZapExecutor(payable(zapExecutor)).executeZapAndDeposit(
                 deposit.token,
                 deposit.amount,
                 deposit.vault,
