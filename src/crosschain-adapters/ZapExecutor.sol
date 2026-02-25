@@ -22,6 +22,12 @@ contract ZapExecutor {
     error ZapProducedNoOutput();
     // Raised when vault deposit mints zero shares.
     error DepositFailedNoShares();
+    // Raised when native ETH transfer fails.
+    error NativeTransferFailed();
+
+    /// @notice Allow contract to receive native tokens (e.g., from WETH withdrawals)
+    /// @dev Required for zap paths that involve native tokens
+    receive() external payable {}
 
     /**
      * @notice Execute zap and deposit to vault
@@ -41,7 +47,7 @@ contract ZapExecutor {
         address receiver,
         uint256 minAmountOut,
         Call[] calldata zapCalls
-    ) external returns (uint256 shares) {
+    ) external payable returns (uint256 shares) {
         // 1. Pull funds from Adapter.
         // (Adapter must have approved this contract beforehand.)
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
@@ -66,9 +72,10 @@ contract ZapExecutor {
 
         if (shares == 0) revert DepositFailedNoShares();
 
-        // Sweep any leftover tokens/native to keep executor stateless.
-        sweepToken(tokenIn);
-        sweepNative();
+        // Sweep any leftover tokens/native directly to the receiver
+        _sweepTokenTo(tokenIn, receiver);
+        _sweepTokenTo(asset, receiver);
+        _sweepNativeTo(receiver);
     }
 
     /// @notice Sweep any remaining token dust from the contract
@@ -76,15 +83,31 @@ contract ZapExecutor {
     /// @dev Contract is designed to be stateless - allows anyone to sweep dust tokens
     function sweepToken(address token) public {
         // Anyone can sweep dust since the contract should be stateless.
-        if (IERC20(token).balanceOf(address(this)) == 0) return;
-        IERC20(token).safeTransfer(msg.sender, IERC20(token).balanceOf(address(this)));
+        _sweepTokenTo(token, msg.sender);
     }
 
     /// @notice Sweep any remaining native currency from the contract
     /// @dev Contract is designed to be stateless - allows anyone to sweep dust native currency
     function sweepNative() public {
         // Sweep any native dust (e.g., from swap refunds).
-        if (address(this).balance == 0) return;
-        payable(msg.sender).transfer(address(this).balance);
+        uint256 bal = address(this).balance;
+        if (bal == 0) return;
+        (bool ok, ) = payable(msg.sender).call{ value: bal }("");
+        if (!ok) revert ZapFailed();
+    }
+
+    function _sweepTokenTo(address token, address to) internal {
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        if (balance > 0) {
+            IERC20(token).safeTransfer(to, balance);
+        }
+    }
+
+    function _sweepNativeTo(address to) internal {
+        uint256 balance = address(this).balance;
+        if (balance > 0) {
+            (bool success, ) = to.call{value: balance}("");
+            if (!success) revert NativeTransferFailed();
+        }
     }
 }

@@ -318,6 +318,28 @@ contract Fee_Test is ElitraVault_Base_Test {
         assertEq(pricePerShareAfterAlice, pricePerShareAfterBob);
     }
 
+    function test_GetAvailableBalance_ExcludesPendingFees() public {
+        // Set 1% deposit fee
+        vm.prank(owner);
+        vault.setDepositFee(ONE_PERCENT_FEE);
+
+        uint256 depositAmount = 1000e6;
+
+        vm.prank(alice);
+        vault.deposit(depositAmount, alice);
+
+        uint256 pendingFees = vault.pendingFees();
+        uint256 vaultBalance = asset.balanceOf(address(vault));
+        uint256 availableBalance = vault.getAvailableBalance();
+
+        // pendingFees should be non-zero (fee was charged)
+        assertGt(pendingFees, 0);
+
+        // getAvailableBalance should exclude pendingFees
+        // No queued redemptions, so available = vaultBalance - pendingFees
+        assertEq(availableBalance, vaultBalance - pendingFees);
+    }
+
     function test_MultipleDeposits_AccumulateFees() public {
         vm.prank(owner);
         vault.setDepositFee(ONE_PERCENT_FEE);
