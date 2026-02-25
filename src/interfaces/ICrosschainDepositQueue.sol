@@ -25,7 +25,7 @@ interface ICrosschainDepositQueue {
         uint256 timestamp;
         uint256 sharePrice; // PPS at the time of failure
         uint256 minAmountOut; // Original attested minAmountOut
-        bytes32 zapCallsHash; // Hash of original attested zapCalls for verification
+        bytes32 zapCallsHash; // Hash of original zapCalls (stored for audit trail, not enforced)
         DepositStatus status;
     }
 
@@ -87,10 +87,12 @@ interface ICrosschainDepositQueue {
 
     /**
      * @notice Fulfill a failed deposit in one step. If the failed token matches the vault asset, deposit directly.
-     *         Otherwise, use ZapExecutor to swap then deposit using the originally attested zapCalls.
+     *         Otherwise, use ZapExecutor to swap then deposit using the provided zapCalls.
+     * @dev Can be called by owner, operator, or the original user who made the deposit.
+     *      Caller can provide custom zapCalls to adapt to current market conditions.
      * @param depositId The failed deposit id
      * @param minSharesOut Minimum shares the user must receive
-     * @param zapCalls Original attested zapCalls (verified against stored hash)
+     * @param zapCalls Custom zapCalls to execute for the zap (can differ from original)
      * @return sharesOut Shares minted to the user
      */
     function fulfillFailedDeposit(

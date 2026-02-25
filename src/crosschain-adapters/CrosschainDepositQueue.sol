@@ -150,18 +150,25 @@ contract CrosschainDepositQueue is
 
     /**
      * @inheritdoc ICrosschainDepositQueue
-     * @param depositId The failed deposit id
      */
     function fulfillFailedDeposit(
         uint256 depositId,
         uint256 minSharesOut,
         Call[] calldata zapCalls
-    ) external override onlyOwnerOrOperator returns (uint256 sharesOut) {
+    ) external override returns (uint256 sharesOut) {
         FailedDeposit storage deposit = failedDeposits[depositId];
         // Only unresolved failed deposits can be fulfilled.
         require(deposit.status == DepositStatus.Failed, "Not failed status");
         require(minSharesOut > 0, "minSharesOut=0");
         require(deposit.vault != address(0), "Invalid vault");
+
+        // Allow owner, operator, or the original user to fulfill.
+        require(
+            hasRole(DEFAULT_ADMIN_ROLE, msg.sender) ||
+            hasRole(OPERATOR_ROLE, msg.sender) ||
+            msg.sender == deposit.user,
+            "Not authorized"
+        );
 
         IElitraVault vault = IElitraVault(deposit.vault);
         address vaultAsset = vault.asset();
@@ -177,12 +184,8 @@ contract CrosschainDepositQueue is
 
             require(sharesOut >= minSharesOut, "Shares below minimum");
         } else {
-            // Zap path - verify zapCalls matches original attested data.
+            // Zap path - operator or user can provide custom zapCalls to resolve the deposit.
             require(zapExecutor != address(0), "Zap executor not set");
-            require(
-                keccak256(abi.encode(zapCalls)) == deposit.zapCallsHash,
-                "zapCalls mismatch"
-            );
 
             // Approve executor for this amount.
             IERC20(deposit.token).forceApprove(zapExecutor, deposit.amount);
