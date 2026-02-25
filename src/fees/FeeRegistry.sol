@@ -12,118 +12,153 @@ import { IFeeRegistry } from "../interfaces/IFeeRegistry.sol";
  */
 contract FeeRegistry is Ownable, IFeeRegistry {
     /// @notice Maximum protocol fee rate (30% in basis points)
-    // Hard cap for protocol fees to avoid abusive configuration.
     uint16 public constant MAX_PROTOCOL_RATE = 3000; // 30%
 
-    /// @notice Global protocol fee rate in basis points (applies to all vaults without custom rates)
-    // Default rate applied when a vault doesn't have a custom override.
-    uint16 public protocolFeeRateBpsGlobal;
+    struct RateSchedule {
+        uint16 currentRateBps;
+        uint16 pendingRateBps;
+        uint256 applyTimestamp; // 0 = no pending update
+    }
+
+    /// @notice Global protocol fee rate schedule
+    RateSchedule internal _globalSchedule;
+
+    /// @notice Per-vault custom protocol fee rate schedules
+    mapping(address vault => RateSchedule) internal _vaultSchedules;
+
+    /// @notice Whether a vault has a custom protocol rate (true = use vault schedule, false = use global)
+    mapping(address vault => bool) public hasCustomProtocolRate;
+
+    /// @notice Cooldown before protocol fee rate changes become effective (0 = immediate)
+    uint256 public protocolFeeRateCooldown;
 
     /// @notice Address where protocol fees are sent
-    // Recipient for protocol fees accrued by vaults.
     address public protocolFeeReceiver;
 
-    /// @notice Per-vault custom protocol fee rates (in basis points)
-    // Per-vault overrides in bps.
-    mapping(address vault => uint16 rateBps) public protocolFeeRateBpsByVault;
-
-    /// @notice Tracks whether a vault has a custom protocol fee rate set
-    // Explicit flag to distinguish "unset" from "0 bps".
-    mapping(address vault => bool enabled) public hasCustomProtocolRate;
-
-    /// @notice Emitted when the global protocol fee rate is updated
     event ProtocolFeeRateUpdated(uint16 oldRateBps, uint16 newRateBps);
-
-    /// @notice Emitted when a vault's custom protocol fee rate is updated
     event ProtocolFeeRateForVaultUpdated(address indexed vault, uint16 oldRateBps, uint16 newRateBps);
-
-    /// @notice Emitted when the protocol fee receiver address is changed
     event ProtocolFeeReceiverUpdated(address indexed oldReceiver, address indexed newReceiver);
+    event ProtocolFeeRateCooldownUpdated(uint256 oldCooldown, uint256 newCooldown);
 
-    /**
-     * @notice Initializes the fee registry with owner and fee receiver
-     * @param initialOwner Address that will own the contract (can set fee rates)
-     * @param initialProtocolReceiver Address where protocol fees will be sent
-     */
     constructor(address initialOwner, address initialProtocolReceiver) {
-        // Require a valid receiver to avoid fee blackholes.
         require(initialProtocolReceiver != address(0), "receiver zero");
         _transferOwnership(initialOwner);
         protocolFeeReceiver = initialProtocolReceiver;
     }
 
-    /**
-     * @notice Sets the global protocol fee rate for all vaults without custom rates
-     * @param newRateBps New fee rate in basis points (max 3000 = 30%)
-     * @dev Vaults with custom rates set via `setProtocolFeeRateBpsForVault` are unaffected
-     */
+    // ========================================= RATE SETTERS =========================================
+
+    /// @notice Sets the global protocol fee rate for all vaults without custom rates
+    /// @param newRateBps New fee rate in basis points (max 3000 = 30%)
     function setProtocolFeeRateBps(uint16 newRateBps) external onlyOwner {
-        // Enforce the maximum to protect users.
         require(newRateBps <= MAX_PROTOCOL_RATE, "rate too high");
-        emit ProtocolFeeRateUpdated(protocolFeeRateBpsGlobal, newRateBps);
-        protocolFeeRateBpsGlobal = newRateBps;
+        uint16 oldRate = _syncAndGetCurrent(_globalSchedule);
+        _scheduleRate(_globalSchedule, newRateBps);
+        emit ProtocolFeeRateUpdated(oldRate, newRateBps);
     }
 
-    /**
-     * @notice Sets a custom protocol fee rate for a specific vault
-     * @param vault Address of the vault to set the custom rate for
-     * @param newRateBps New fee rate in basis points (max 3000 = 30%)
-     * @dev Custom rates override the global rate for the specified vault
-     */
+    /// @notice Sets a custom protocol fee rate for a specific vault
+    /// @param vault Address of the vault to set the custom rate for
+    /// @param newRateBps New fee rate in basis points (max 3000 = 30%)
     function setProtocolFeeRateBpsForVault(address vault, uint16 newRateBps) external onlyOwner {
-        // Validate inputs and cap rate.
         require(vault != address(0), "vault zero");
         require(newRateBps <= MAX_PROTOCOL_RATE, "rate too high");
-        uint16 oldRate = protocolFeeRateBpsByVault[vault];
-        protocolFeeRateBpsByVault[vault] = newRateBps;
-        // Flag override so 0 bps can be a valid custom value.
+        uint16 oldRate = _effectiveRateForVault(vault);
         hasCustomProtocolRate[vault] = true;
+        _syncAndGetCurrent(_vaultSchedules[vault]);
+        _scheduleRate(_vaultSchedules[vault], newRateBps);
         emit ProtocolFeeRateForVaultUpdated(vault, oldRate, newRateBps);
     }
 
-    /**
-     * @notice Removes a custom protocol fee rate for a vault, reverting to global rate
-     * @param vault Address of the vault to clear the custom rate from
-     */
+    /// @notice Removes a custom protocol fee rate for a vault, reverting to global rate (immediate)
+    /// @param vault Address of the vault to clear the custom rate from
     function clearProtocolFeeRateBpsForVault(address vault) external onlyOwner {
-        // Clear override so vault falls back to global rate.
         require(vault != address(0), "vault zero");
-        uint16 oldRate = protocolFeeRateBpsByVault[vault];
-        delete protocolFeeRateBpsByVault[vault];
+        uint16 oldRate = _effectiveRateForVault(vault);
+        delete _vaultSchedules[vault];
         delete hasCustomProtocolRate[vault];
         emit ProtocolFeeRateForVaultUpdated(vault, oldRate, 0);
     }
 
-    /**
-     * @notice Gets the protocol fee rate for a specific vault
-     * @param vault Address of the vault to query
-     * @return The fee rate in basis points (custom rate if set, otherwise global rate)
-     */
+    // ========================================= RATE GETTERS =========================================
+
+    /// @notice Gets the effective protocol fee rate for a specific vault
+    /// @param vault Address of the vault to query
+    /// @return The fee rate in basis points (custom rate if set, otherwise global rate)
     function protocolFeeRateBps(address vault) external view returns (uint16) {
-        // Prefer custom override when enabled.
-        if (hasCustomProtocolRate[vault]) {
-            return protocolFeeRateBpsByVault[vault];
-        }
-        // Otherwise return the global default.
-        return protocolFeeRateBpsGlobal;
+        return _effectiveRateForVault(vault);
     }
 
-    /**
-     * @notice Gets the global protocol fee rate
-     * @return The global fee rate in basis points
-     */
+    /// @notice Gets the effective global protocol fee rate
+    /// @return The global fee rate in basis points
     function protocolFeeRateBps() external view returns (uint16) {
-        return protocolFeeRateBpsGlobal;
+        return _effectiveRate(_globalSchedule);
     }
 
-    /**
-     * @notice Sets the address where protocol fees are sent
-     * @param newReceiver New address to receive protocol fees
-     */
+    /// @notice Gets the active global protocol fee rate (without pending updates)
+    function protocolFeeRateBpsGlobal() external view returns (uint16) {
+        return _globalSchedule.currentRateBps;
+    }
+
+    /// @notice Gets the active per-vault custom protocol fee rate (without pending updates)
+    function protocolFeeRateBpsByVault(address vault) external view returns (uint16) {
+        return _vaultSchedules[vault].currentRateBps;
+    }
+
+    // ========================================= CONFIG =========================================
+
+    /// @notice Sets the address where protocol fees are sent
+    /// @param newReceiver New address to receive protocol fees
     function setProtocolFeeReceiver(address newReceiver) external onlyOwner {
-        // Require a valid receiver to avoid fee blackholes.
         require(newReceiver != address(0), "receiver zero");
         emit ProtocolFeeReceiverUpdated(protocolFeeReceiver, newReceiver);
         protocolFeeReceiver = newReceiver;
+    }
+
+    /// @notice Sets cooldown before protocol fee rate updates become active
+    /// @param newCooldown Cooldown in seconds (0 = immediate updates)
+    function setProtocolFeeRateCooldown(uint256 newCooldown) external onlyOwner {
+        emit ProtocolFeeRateCooldownUpdated(protocolFeeRateCooldown, newCooldown);
+        protocolFeeRateCooldown = newCooldown;
+    }
+
+    // ========================================= INTERNAL =========================================
+
+    /// @dev Resolves the effective rate from a schedule (respects cooldown)
+    function _effectiveRate(RateSchedule storage schedule) internal view returns (uint16) {
+        if (schedule.applyTimestamp != 0 && block.timestamp >= schedule.applyTimestamp) {
+            return schedule.pendingRateBps;
+        }
+        return schedule.currentRateBps;
+    }
+
+    /// @dev Resolves the effective rate for a vault (custom if set, otherwise global)
+    function _effectiveRateForVault(address vault) internal view returns (uint16) {
+        if (hasCustomProtocolRate[vault]) {
+            return _effectiveRate(_vaultSchedules[vault]);
+        }
+        return _effectiveRate(_globalSchedule);
+    }
+
+    /// @dev Syncs a matured pending rate into current and returns the current rate
+    function _syncAndGetCurrent(RateSchedule storage schedule) internal returns (uint16) {
+        if (schedule.applyTimestamp != 0 && block.timestamp >= schedule.applyTimestamp) {
+            schedule.currentRateBps = schedule.pendingRateBps;
+            schedule.pendingRateBps = 0;
+            schedule.applyTimestamp = 0;
+        }
+        return schedule.currentRateBps;
+    }
+
+    /// @dev Schedules a new rate (immediate if no cooldown, delayed otherwise)
+    function _scheduleRate(RateSchedule storage schedule, uint16 newRateBps) internal {
+        if (protocolFeeRateCooldown == 0) {
+            schedule.currentRateBps = newRateBps;
+            schedule.pendingRateBps = 0;
+            schedule.applyTimestamp = 0;
+        } else {
+            schedule.pendingRateBps = newRateBps;
+            schedule.applyTimestamp = block.timestamp + protocolFeeRateCooldown;
+        }
     }
 }
