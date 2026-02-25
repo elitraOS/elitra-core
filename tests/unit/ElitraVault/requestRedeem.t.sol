@@ -17,7 +17,7 @@ contract RequestRedeem_Test is ElitraVault_Base_Test {
 
     function test_InstantRedeem_WhenSufficientLiquidity() public {
         vm.prank(alice);
-        uint256 assetsOut = vault.requestRedeem(500e6, alice, alice);
+        uint256 assetsOut = vault.requestRedeem(500e6, alice);
 
         // Should return assets (instant) - 1:1 ratio since no price change
         assertEq(assetsOut, 500e6);
@@ -46,7 +46,7 @@ contract RequestRedeem_Test is ElitraVault_Base_Test {
         // With 2000 totalAssets and 2000 shares, 500 shares = 500 assets
         // But only 200 is available, so should queue
         vm.prank(alice);
-        uint256 result = vault.requestRedeem(500e6, alice, alice);
+        uint256 result = vault.requestRedeem(500e6, alice);
 
         // Should return REQUEST_ID (queued)
         assertEq(result, 0); // REQUEST_ID

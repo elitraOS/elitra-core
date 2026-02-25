@@ -21,9 +21,9 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase, IFeeManager {
     event VaultPausedDueToThreshold(uint256 indexed timestamp, uint256 oldPPS, uint256 newPPS);
     event BalanceUpdateHookUpdated(address indexed oldHook, address indexed newHook);
     event RedemptionHookUpdated(address indexed oldHook, address indexed newHook);
-    event RedeemRequest(address indexed receiver, address indexed owner, uint256 assets, uint256 shares, bool instant);
-    event RequestFulfilled(address indexed receiver, uint256 assets);
-    event RequestCancelled(address indexed receiver, uint256 assets, uint256 sharesMinted);
+    event RedeemRequest(address indexed owner, uint256 assets, uint256 shares, bool instant);
+    event RequestFulfilled(address indexed owner, uint256 assets);
+    event RequestCancelled(address indexed owner, uint256 assets, uint256 sharesMinted);
     event NavFreshnessThresholdUpdated(uint256 oldThreshold, uint256 newThreshold);
     event DepositFeeUpdated(uint256 oldFee, uint256 newFee);
     event WithdrawFeeUpdated(uint256 oldFee, uint256 newFee);
@@ -48,9 +48,9 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase, IFeeManager {
     function setRedemptionHook(IRedemptionHook hook) external;
     function redemptionHook() external view returns (IRedemptionHook);
     function getAvailableBalance() external view returns (uint256);
-    function requestRedeem(uint256 shares, address receiver, address owner) external returns (uint256);
-    function fulfillRedeem(address receiver, uint256 assets) external;
-    function cancelRedeem(address receiver, uint256 assets) external;
+    function requestRedeem(uint256 shares, address owner) external returns (uint256);
+    function fulfillRedeem(address owner, uint256 assets) external;
+    function cancelRedeem(address owner, uint256 assets) external;
     function pendingRedeemRequest(address user) external view returns (uint256 assets);
     function manageBatchWithDelta(Call[] calldata calls, int256 externalDelta) external payable;
 

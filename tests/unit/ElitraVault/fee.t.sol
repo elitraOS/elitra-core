@@ -174,7 +174,7 @@ contract Fee_Test is ElitraVault_Base_Test {
 
         // Instant redeem
         vm.prank(alice);
-        vault.requestRedeem(aliceShares, alice, alice);
+        vault.requestRedeem(aliceShares, alice);
 
         uint256 pendingFees = vault.pendingFees();
         
@@ -207,7 +207,7 @@ contract Fee_Test is ElitraVault_Base_Test {
         uint256 previewedAssets = vault.previewRedeem(aliceShares);
 
         vm.prank(alice);
-        uint256 actualAssets = vault.requestRedeem(aliceShares, alice, alice);
+        uint256 actualAssets = vault.requestRedeem(aliceShares, alice);
 
         // Preview should match actual
         assertEq(previewedAssets, actualAssets);

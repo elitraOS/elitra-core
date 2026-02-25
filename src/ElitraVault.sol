@@ -45,7 +45,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     // Redemption state
     // Hook that decides redemption mode and amount.
     IRedemptionHook public redemptionHook;
-    // Receiver => pending queued assets.
+    // Owner => pending queued assets.
     mapping(address user => PendingRedeem redeem) internal _pendingRedeem;
     // Total assets reserved for queued redemptions.
     uint256 public totalPendingAssets;
@@ -199,11 +199,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     // ========================================= REDEMPTION INTEGRATION =========================================
 
     /// @inheritdoc IElitraVault
-    function requestRedeem(uint256 shares, address receiver, address owner) public whenNotPaused returns (uint256) {
+    function requestRedeem(uint256 shares, address owner) public whenNotPaused returns (uint256) {
         // Validate inputs and ownership.
         require(shares > 0, Errors.SharesAmountZero());
         require(owner == msg.sender, Errors.NotSharesOwner());
-        require(receiver != address(0), Errors.ZeroAddress());
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
 
         // Accrue management/performance fees before computing redemption value.
@@ -212,13 +211,40 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         // Gross assets before any exit fee.
         uint256 grossAssets = super.previewRedeem(shares);
 
+<<<<<<< HEAD
+<<<<<<< Updated upstream
+        // Ask strategy how to handle this redemption
+        // Ask strategy/hook to choose redemption mode and adjust assets if needed.
+        (RedemptionMode mode, uint256 actualAssets) = redemptionHook.beforeRedeem(this, shares, assets, owner, receiver);
+=======
+        // Ask the strategy/hook to choose redemption mode.
+        (RedemptionMode mode, uint256 actualGrossAssets) =
+            redemptionHook.beforeRedeem(this, shares, grossAssets, owner);
+>>>>>>> Stashed changes
+=======
         // Ask the strategy/hook to choose redemption mode.
         (RedemptionMode mode, uint256 actualGrossAssets) =
             redemptionHook.beforeRedeem(this, shares, grossAssets, owner, receiver);
+>>>>>>> main
 
         if (mode == RedemptionMode.INSTANT) {
             // Instant redemptions require fresh NAV.
             _requireFreshNav();
+<<<<<<< HEAD
+<<<<<<< Updated upstream
+            _withdraw(owner, receiver, owner, actualAssets, shares);
+            emit RedeemRequest(receiver, owner, actualAssets, shares, true);
+            return actualAssets;
+=======
+            // _withdraw internally deducts withdrawFee from actualGrossAssets
+            // and sends the net amount to the owner. Fee fires exactly once.
+            _withdraw(owner, owner, owner, actualGrossAssets, shares);
+            (, uint256 withdrawFee, , ) = _feeConfig();
+            uint256 assetsToUser = actualGrossAssets - _feeOnTotal(actualGrossAssets, withdrawFee);
+            emit RedeemRequest(owner, assetsToUser, shares, true);
+            return assetsToUser;
+>>>>>>> Stashed changes
+=======
             // _withdraw internally deducts withdrawFee from actualGrossAssets
             // and sends the net amount to the receiver. Fee fires exactly once.
             _withdraw(owner, receiver, owner, actualGrossAssets, shares);
@@ -226,6 +252,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
             uint256 assetsToUser = actualGrossAssets - _feeOnTotal(actualGrossAssets, withdrawFee);
             emit RedeemRequest(receiver, owner, assetsToUser, shares, true);
             return assetsToUser;
+>>>>>>> main
         } else if (mode == RedemptionMode.QUEUED) {
             // Queue the redemption: burn shares now, transfer assets later.
             _requireFreshNav();
@@ -234,10 +261,17 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
             // Track reserved assets to exclude from NAV.
             totalPendingAssets += actualAssets;
 
+<<<<<<< HEAD
+            PendingRedeem storage pending = _pendingRedeem[owner];
+            pending.assets += assetsAfterFee;
+
+            emit RedeemRequest(owner, assetsAfterFee, shares, false);
+=======
             PendingRedeem storage pending = _pendingRedeem[receiver];
             pending.assets += actualAssets;
 
             emit RedeemRequest(receiver, owner, actualAssets, shares, false);
+>>>>>>> main
             return REQUEST_ID;
         } else {
             revert Errors.InvalidRedemptionMode();
@@ -245,18 +279,23 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     }
 
     /// @inheritdoc IElitraVault
-    function fulfillRedeem(address receiver, uint256 assets) external requiresAuth {
+    function fulfillRedeem(address owner, uint256 assets) external requiresAuth {
         // Take fees on every withdrawal (queued redemption fulfillment transfers assets out)
         // Accrue fees before transferring assets out.
         _takeFees();
 
-        PendingRedeem storage pending = _pendingRedeem[receiver];
+        PendingRedeem storage pending = _pendingRedeem[owner];
         // Ensure enough queued assets are available.
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
+<<<<<<< HEAD
+        emit RequestFulfilled(owner, assets);
+        // Shares already burned at request time; just transfer assets.
+        IERC20(asset()).safeTransfer(owner, assets);
+=======
         // Calculate and accumulate queued redeem fee on the fulfilled amount.
         (, , uint256 queuedFee, ) = _feeConfig();
         uint256 feeAmount = _feeOnTotal(assets, queuedFee);
@@ -269,14 +308,15 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         
         // Shares already burned at request time; transfer assets minus fee.
         IERC20(asset()).safeTransfer(receiver, assetsAfterFee);
+>>>>>>> main
     }
 
     /// @inheritdoc IElitraVault
-    function cancelRedeem(address receiver, uint256 assets) external requiresAuth {
+    function cancelRedeem(address owner, uint256 assets) external requiresAuth {
         // Accrue fees before minting back shares.
         _takeFees();
 
-        PendingRedeem storage pending = _pendingRedeem[receiver];
+        PendingRedeem storage pending = _pendingRedeem[owner];
         // Ensure cancel amount is valid.
         require(pending.assets != 0 && assets <= pending.assets, Errors.InvalidAssetsAmount());
 
@@ -287,8 +327,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         pending.assets -= assets;
         totalPendingAssets -= assets;
 
-        emit RequestCancelled(receiver, assets, sharesToMint);
-        _mint(receiver, sharesToMint);
+        emit RequestCancelled(owner, assets, sharesToMint);
+        _mint(owner, sharesToMint);
     }
 
     /// @inheritdoc IElitraVault
@@ -458,21 +498,20 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @notice Redeem shares by calling requestRedeem
     /// @param shares Amount of shares to redeem
-    /// @param receiver Address to receive the redeemed assets
     /// @param owner Address that owns the shares
     /// @return Assets amount redeemed (or REQUEST_ID if queued)
-    /// @dev This is a convenience wrapper around requestRedeem for ERC4626 compatibility
+    /// @dev ERC4626 compatibility wrapper. Receiver arg is ignored; assets always go to owner.
     function redeem(
         uint256 shares,
-        address receiver,
+        address, /* receiver — ignored, assets always go to owner */
         address owner
     )
         public
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         returns (uint256)
     {
-        // Wrap requestRedeem for ERC4626 compatibility.
-        return requestRedeem(shares, receiver, owner);
+        // Ignore receiver; always redeem to owner to prevent miscredit.
+        return requestRedeem(shares, owner);
     }
 
     function _beforeTokenTransfer(address from, address to, uint256 amount) internal override whenNotPaused {

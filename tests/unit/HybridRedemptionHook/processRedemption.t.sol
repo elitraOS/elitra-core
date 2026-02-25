@@ -18,7 +18,6 @@ contract ProcessRedemption_Test is HybridRedemptionHook_Base_Test {
             IElitraVault(vault),
             100, // shares
             500e6, // 500 USDC needed
-            address(this),
             address(this)
         );
 
@@ -38,7 +37,6 @@ contract ProcessRedemption_Test is HybridRedemptionHook_Base_Test {
             IElitraVault(vault),
             100, // shares
             500e6, // 500 USDC needed
-            address(this),
             address(this)
         );
 

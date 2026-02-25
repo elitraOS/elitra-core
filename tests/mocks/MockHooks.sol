@@ -93,8 +93,7 @@ contract MockRedemptionHook is IRedemptionHook {
         IElitraVault /*vault*/,
         uint256 /*shares*/,
         uint256 assets,
-        address /*owner*/,
-        address /*receiver*/
+        address /*owner*/
     ) external view override returns (RedemptionMode, uint256) {
         if (shouldReject) {
             return (mode, 0);
@@ -103,7 +102,7 @@ contract MockRedemptionHook is IRedemptionHook {
     }
 
     function afterRedeem(
-        address /*receiver*/,
+        address /*owner*/,
         uint256 /*shares*/,
         uint256 /*assets*/,
         bool /*instant*/
