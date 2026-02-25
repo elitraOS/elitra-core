@@ -115,7 +115,6 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
 
         // Decode the OFT compose message using LayerZero's codec.
         uint32 srcEid = OFTComposeMsgCodec.srcEid(_message);
-        uint256 amountLD = OFTComposeMsgCodec.amountLD(_message);
         bytes memory composeMsg = OFTComposeMsgCodec.composeMsg(_message);
 
         // Get the underlying token address from the OFT mapping.
@@ -123,13 +122,17 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
 
         // If the received token is native (maps to WETH), wrap it.
         // This handles cases where OFT is wrapping a native token (e.g., SEI -> WSEI).
-        if (token == weth) {
-            IWETH9(weth).deposit{ value: amountLD }();
+        if (token == weth && msg.value > 0) {
+            IWETH9(weth).deposit{ value: msg.value }();
         }
+
+        // Take all of the token balance to ensure we process exactly what the adapter holds.
+        // This mitigates `amountLD` overestimations or stranded native drops (now wrapped into WETH).
+        uint256 amountIn = IERC20(token).balanceOf(address(this));
 
         // Execute the vault deposit using base adapter logic.
         // srcEid serves as the source identifier for tracking.
-        _processReceivedFunds(_from, srcEid, token, amountLD, _guid, composeMsg);
+        _processReceivedFunds(_from, srcEid, token, amountIn, _guid, composeMsg);
     }
 
     // ================== ADMIN FUNCTIONS ==================
