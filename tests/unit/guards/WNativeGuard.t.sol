@@ -80,6 +80,30 @@ contract WNativeGuardTest is Test {
         assertFalse(result, "Should return false for non-whitelisted spender");
     }
 
+    function test_Validate_Approve_ZeroAmount_RemovedSpender_ReturnsTrue() public {
+        vm.prank(owner);
+        guard.setSpender(spender1, true);
+        vm.prank(owner);
+        guard.setSpender(spender1, false);
+
+        bytes memory data = abi.encodeWithSelector(bytes4(0x095ea7b3), spender1, uint256(0));
+
+        bool result = guard.validate(user, data, 0);
+        assertTrue(result, "Should allow zero amount approve for removed spender");
+    }
+
+    function test_Validate_Approve_NonZeroAmount_RemovedSpender_ReturnsFalse() public {
+        vm.prank(owner);
+        guard.setSpender(spender1, true);
+        vm.prank(owner);
+        guard.setSpender(spender1, false);
+
+        bytes memory data = abi.encodeWithSelector(bytes4(0x095ea7b3), spender1, uint256(1));
+
+        bool result = guard.validate(user, data, 0);
+        assertFalse(result, "Should block non-zero approve for removed spender");
+    }
+
     function test_Validate_Deposit_ReturnsTrue() public {
         bytes memory data = abi.encodeWithSelector(bytes4(0xd0e30db0));
 
