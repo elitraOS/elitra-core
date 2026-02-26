@@ -245,6 +245,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function fulfillRedeem(address owner, uint256 assets) external requiresAuth {
+        // Require fresh NAV for accurate fee calculation.
+        _requireFreshNav();
         // Take fees on every withdrawal (queued redemption fulfillment transfers assets out)
         // Accrue fees before transferring assets out.
         _takeFees();
@@ -271,6 +273,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
 
     /// @inheritdoc IElitraVault
     function cancelRedeem(address owner, uint256 assets) external requiresAuth {
+        // Require fresh NAV for accurate fee calculation.
+        _requireFreshNav();
         // Accrue fees before minting back shares.
         _takeFees();
 
