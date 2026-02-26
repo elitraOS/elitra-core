@@ -16,10 +16,11 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
 /// @title ElitraVault - Vault with pluggable oracle and redemption adapters
 /// @notice ERC-4626 vault that delegates validation logic to adapters
-contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault {
+contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGuardUpgradeable, IElitraVault {
     using Address for address;
     using SafeERC20 for IERC20;
 
@@ -76,6 +77,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         __ERC20_init(_name, _symbol);
         __ERC4626_init(IERC20Upgradeable(address(_asset)));
         __VaultBase_init(_owner, _upgradeAdmin);
+        __ReentrancyGuard_init();
 
         // FeeManager (Lagoon-inspired): initialize with safe defaults (0 fees) and receivers set to owner.
         // Initialize FeeManager with safe defaults (0 fees, no cooldown).
@@ -355,11 +357,33 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         return _pendingRedeem[user].assets;
     }
 
-    /// @notice Batch management is disabled - use manageBatchWithDelta instead
-    /// @dev This function always reverts to prevent accidental use of the base manageBatch function
-    function manageBatch(Call[] calldata) public payable override(VaultBase, IVaultBase) {
-        // Disallow base batch to ensure externalDelta is always provided.
-        revert Errors.UseManageBatchWithDelta();
+    /// @notice Execute batch operations and infer external balance delta from vault asset balance change
+    /// @param calls Array of calls to execute
+    /// @dev Uses pre/post vault asset balance to derive how external aggregated balance changed
+    function manageBatch(Call[] calldata calls) public payable nonReentrant override(VaultBase, IVaultBase) {
+        // Track vault-held asset balance before strategy execution.
+        uint256 beforeBalance = IERC20(asset()).balanceOf(address(this));
+
+        // Execute guarded batch operations.
+        super.manageBatch(calls);
+
+        // Infer external balance delta from how much asset left/returned to the vault.
+        uint256 afterBalance = IERC20(asset()).balanceOf(address(this));
+        if (afterBalance != beforeBalance) {
+            uint256 balanceChange =
+                afterBalance > beforeBalance ? afterBalance - beforeBalance : beforeBalance - afterBalance;
+
+            // If funds returned to vault, external balances must be at least that much.
+            if (afterBalance > beforeBalance) {
+                require(balanceChange <= aggregatedUnderlyingBalances, "Balance change exceeds external balances");
+            }
+
+            uint256 newAggregatedUnderlyingBalances = afterBalance > beforeBalance
+                ? aggregatedUnderlyingBalances - balanceChange
+                : aggregatedUnderlyingBalances + balanceChange;
+
+            _updateBalance(newAggregatedUnderlyingBalances);
+        }
     }
 
     /// @notice Execute batch operations and update balance with explicit external delta
@@ -372,6 +396,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     )
         public
         payable
+        nonReentrant
         requiresAuth
     {
         // Execute batch operations first (may change external balances).
