@@ -94,6 +94,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @notice Internal function to update vault balance and price per share
     /// @param newAggregatedBalance The new aggregated balance from external protocols
     function _updateBalance(uint256 newAggregatedBalance) internal {
+        // Accrue fees on the old balance before updating to new balance
+        _takeFees();
+
         // 1. Pull validation from balance update hook (read-only).
         (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
             lastPricePerShare, totalSupply(), _netTotalAssets(newAggregatedBalance)
