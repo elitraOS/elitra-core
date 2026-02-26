@@ -212,6 +212,7 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         // Simulate an external decrease in vault assets (e.g., loss, fee)
         uint256 negativeDelta = 50e6; // 50 USDC (5% decrease)
 
+        vm.roll(block.number + 1);
         vm.prank(owner);
         // forge-lint: disable-next-line(unsafe-typecast)
         vault.manageBatchWithDelta(calls, -int256(negativeDelta));
@@ -241,9 +242,61 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         // Try to decrease more than available balance
         uint256 negativeDelta = 200e6; // 200 USDC (more than 100 USDC balance)
 
+        vm.roll(block.number + 1);
         vm.prank(owner);
         vm.expectRevert("External delta exceeds balances");
         // forge-lint: disable-next-line(unsafe-typecast)
         vault.manageBatchWithDelta(calls, -int256(negativeDelta));
+    }
+
+    function test_ManageBatchWithDelta_UpdatesBlockAndTimestampTrackers() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
+
+        vm.warp(1_700_000_123);
+        vm.roll(1234);
+        vm.prank(owner);
+        vault.manageBatchWithDelta(calls, 0);
+
+        assertEq(vault.lastBlockUpdated(), 1234);
+        assertEq(vault.lastTimestampUpdated(), 1_700_000_123);
+    }
+
+    function test_ManageBatchWithDelta_RevertsIfAlreadyUpdatedInSameBlock() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
+
+        vm.roll(100);
+        vm.prank(owner);
+        vault.manageBatchWithDelta(calls, 0);
+
+        vm.prank(owner);
+        vm.expectRevert(Errors.UpdateAlreadyCompletedInThisBlock.selector);
+        vault.manageBatchWithDelta(calls, 0);
+    }
+
+    function test_ManageBatchWithDelta_RevertsIfOracleAlreadyUpdatedInSameBlock() public {
+        Call[] memory calls = new Call[](1);
+        calls[0] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            value: 0
+        });
+
+        vm.roll(101);
+        vm.prank(owner);
+        vault.updateBalance(0);
+
+        vm.prank(owner);
+        vm.expectRevert(Errors.UpdateAlreadyCompletedInThisBlock.selector);
+        vault.manageBatchWithDelta(calls, 0);
     }
 }
