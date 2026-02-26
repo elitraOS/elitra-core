@@ -16,10 +16,11 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
+import { ReentrancyGuardUpgradeable } from "@openzeppelin/contracts-upgradeable/security/ReentrancyGuardUpgradeable.sol";
 
 /// @title ElitraVault - Vault with pluggable oracle and redemption adapters
 /// @notice ERC-4626 vault that delegates validation logic to adapters
-contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault {
+contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGuardUpgradeable, IElitraVault {
     using Address for address;
     using SafeERC20 for IERC20;
 
@@ -76,6 +77,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         __ERC20_init(_name, _symbol);
         __ERC4626_init(IERC20Upgradeable(address(_asset)));
         __VaultBase_init(_owner, _upgradeAdmin);
+        __ReentrancyGuard_init();
 
         // FeeManager (Lagoon-inspired): initialize with safe defaults (0 fees) and receivers set to owner.
         // Initialize FeeManager with safe defaults (0 fees, no cooldown).
@@ -120,7 +122,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @notice Update the vault's aggregated underlying balance and price per share
     /// @param newAggregatedBalance The new aggregated balance from external protocols
     /// @dev Validates that balance hasn't been updated in the current block and calls the balance update hook
-    function updateBalance(uint256 newAggregatedBalance) external requiresAuth {
+    function updateBalance(uint256 newAggregatedBalance) external requiresAuth nonReentrant {
         // Guard against multiple external syncs within the same block.
         require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
 
@@ -199,7 +201,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     // ========================================= REDEMPTION INTEGRATION =========================================
 
     /// @inheritdoc IElitraVault
-    function requestRedeem(uint256 shares, address owner) public whenNotPaused returns (uint256) {
+    function requestRedeem(uint256 shares, address owner) public whenNotPaused nonReentrant returns (uint256) {
         // Validate inputs and ownership.
         require(shares > 0, Errors.SharesAmountZero());
         require(owner == msg.sender, Errors.NotSharesOwner());
@@ -244,7 +246,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     }
 
     /// @inheritdoc IElitraVault
-    function fulfillRedeem(address owner, uint256 assets) external requiresAuth {
+    function fulfillRedeem(address owner, uint256 assets) external requiresAuth nonReentrant {
         // Take fees on every withdrawal (queued redemption fulfillment transfers assets out)
         // Accrue fees before transferring assets out.
         _takeFees();
@@ -270,7 +272,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     }
 
     /// @inheritdoc IElitraVault
-    function cancelRedeem(address owner, uint256 assets) external requiresAuth {
+    function cancelRedeem(address owner, uint256 assets) external requiresAuth nonReentrant {
         // Accrue fees before minting back shares.
         _takeFees();
 
@@ -373,6 +375,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         public
         payable
         requiresAuth
+        nonReentrant
     {
         // Execute batch operations first (may change external balances).
         super.manageBatch(calls);
@@ -414,6 +417,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         public
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         whenNotPaused
+        nonReentrant
         returns (uint256)
     {
         // Disallow stale NAV and accrue fees before minting shares.
@@ -429,6 +433,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         public
         override(ERC4626Upgradeable, IERC4626Upgradeable)
         whenNotPaused
+        nonReentrant
         returns (uint256)
     {
         // Disallow stale NAV and accrue fees before minting shares.
