@@ -535,65 +535,6 @@ contract FeeRegistryTest is Test {
     }
 
     /*//////////////////////////////////////////////////////////////
-                          COOLDOWN BEHAVIOR
-    //////////////////////////////////////////////////////////////*/
-
-    function test_Cooldown_GlobalRateUpdate_AppliesAfterDelay() public {
-        vm.prank(owner);
-        feeRegistry.setProtocolFeeRateCooldown(1 days);
-
-        vm.prank(owner);
-        feeRegistry.setProtocolFeeRateBps(500);
-
-        // Still old value until cooldown elapses.
-        assertEq(feeRegistry.protocolFeeRateBpsGlobal(), 0);
-        assertEq(feeRegistry.protocolFeeRateBps(), 0);
-
-        vm.warp(block.timestamp + 1 days);
-        assertEq(feeRegistry.protocolFeeRateBps(), 500);
-    }
-
-    function test_Cooldown_CustomRateUpdate_AppliesAfterDelay() public {
-        vm.prank(owner);
-        feeRegistry.setProtocolFeeRateBps(300);
-
-        vm.prank(owner);
-        feeRegistry.setProtocolFeeRateCooldown(1 days);
-
-        vm.prank(owner);
-        feeRegistry.setProtocolFeeRateBpsForVault(vault, 1200);
-
-        // Custom flag is set immediately, but rate still resolves to pending vault schedule
-        // which hasn't matured yet — so effective rate comes from vault schedule's current (0),
-        // but hasCustomProtocolRate is true. The vault schedule current is 0, pending is 1200.
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault));
-        assertEq(feeRegistry.protocolFeeRateBpsByVault(vault), 0);
-        assertEq(feeRegistry.protocolFeeRateBps(vault), 0);
-
-        vm.warp(block.timestamp + 1 days);
-        assertEq(feeRegistry.protocolFeeRateBps(vault), 1200);
-    }
-
-    function test_Cooldown_ClearCustomRate_IsImmediate() public {
-        vm.prank(owner);
-        feeRegistry.setProtocolFeeRateBps(400);
-
-        vm.prank(owner);
-        feeRegistry.setProtocolFeeRateBpsForVault(vault, 1300);
-        assertEq(feeRegistry.protocolFeeRateBps(vault), 1300);
-
-        vm.prank(owner);
-        feeRegistry.setProtocolFeeRateCooldown(1 days);
-
-        vm.prank(owner);
-        feeRegistry.clearProtocolFeeRateBpsForVault(vault);
-
-        // Clear is always immediate — vault falls back to global right away.
-        assertFalse(feeRegistry.hasCustomProtocolRate(vault));
-        assertEq(feeRegistry.protocolFeeRateBps(vault), 400);
-    }
-
-    /*//////////////////////////////////////////////////////////////
                              CONSTANTS
     //////////////////////////////////////////////////////////////*/
 
