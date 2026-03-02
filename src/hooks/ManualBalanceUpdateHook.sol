@@ -8,7 +8,7 @@ import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 
 /// @title ManualBalanceUpdateHook
 /// @notice Hook that validates balance updates based on price change thresholds
-/// @dev Pure calculation helper - does not modify vault state
+/// @dev Pure validation helper - does not modify vault state
 contract ManualBalanceUpdateHook is IBalanceUpdateHook, Auth {
     using Math for uint256;
 
@@ -29,26 +29,10 @@ contract ManualBalanceUpdateHook is IBalanceUpdateHook, Auth {
     }
 
     /// @inheritdoc IBalanceUpdateHook
-    function beforeBalanceUpdate(
-        uint256 currentPPS,
-        uint256 totalSupply,
-        uint256 totalAssets
-    )
-        external
-        view
-        returns (bool shouldContinue, uint256 newPPS)
-    {
-        // Calculate new price per share
-        if (totalSupply == 0) {
-            newPPS = DENOMINATOR;
-            shouldContinue = true;
-        } else {
-            newPPS = totalAssets.mulDiv(DENOMINATOR, totalSupply, Math.Rounding.Down);
-
-            // Check if price change exceeds threshold
-            uint256 percentageChange = _calculatePercentageChange(currentPPS, newPPS);
-            shouldContinue = percentageChange <= maxPercentageChange;
-        }
+    function beforeBalanceUpdate(uint256 currentPPS, uint256 newPPS) external view returns (bool shouldContinue) {
+        // Check if price change exceeds threshold.
+        uint256 percentageChange = _calculatePercentageChange(currentPPS, newPPS);
+        shouldContinue = percentageChange <= maxPercentageChange;
     }
 
     /// @inheritdoc IBalanceUpdateHook
