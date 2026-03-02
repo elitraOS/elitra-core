@@ -53,7 +53,7 @@ contract WNativeGuard is ITransactionGuard, Ownable {
     /**
      * @notice Validates a transaction against the guard's rules
      * @inheritdoc ITransactionGuard
-     * @dev Allows deposit, withdraw (always), and approve (only to whitelisted spenders)
+     * @dev Allows deposit/withdraw, approve(spender, 0) for revocation, and non-zero approve only to whitelisted spenders
      * @return True if the transaction is allowed, false otherwise
      */
     function validate(address, bytes calldata data, uint256) external view override returns (bool) {
@@ -61,9 +61,10 @@ contract WNativeGuard is ITransactionGuard, Ownable {
         bytes4 sig = bytes4(data);
 
         if (sig == APPROVE_SELECTOR) {
-            // For approve, check if spender is whitelisted
+            // Always allow allowance revocation even if spender is no longer whitelisted.
             address spender = abi.decode(data[4:36], (address));
-            return whitelistedSpenders[spender];
+            uint256 amount = abi.decode(data[36:68], (uint256));
+            return amount == 0 || whitelistedSpenders[spender];
         }
 
         // Always allow deposit and withdraw operations (wrapping/unwrapping)

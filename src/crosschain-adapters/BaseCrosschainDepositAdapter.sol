@@ -97,18 +97,18 @@ abstract contract BaseCrosschainDepositAdapter is
         // Use try/catch to handle malformed payloads gracefully.
         address vault;
         address receiver;
-        uint256 minAmountOut;
+        uint256 minSharesOut;
         Call[] memory zapCalls;
 
         try this.decodePayload(payload) returns (
             address _vault,
             address _receiver,
-            uint256 _minAmountOut,
+            uint256 _minSharesOut,
             Call[] memory _zapCalls
         ) {
             vault = _vault;
             receiver = _receiver;
-            minAmountOut = _minAmountOut;
+            minSharesOut = _minSharesOut;
             zapCalls = _zapCalls;
         } catch {
             // Payload decode failed - record deposit with user as receiver and handle failure.
@@ -132,18 +132,24 @@ abstract contract BaseCrosschainDepositAdapter is
 
         // 3. Validate vault allowlist before executing deposit.
         if (!supportedVaults[vault]) {
-            _handleDepositFailure(depositId, token, amount, abi.encodeWithSelector(VaultNotSupported.selector), minAmountOut, zapCalls);
+            _handleDepositFailure(depositId, token, amount, abi.encodeWithSelector(VaultNotSupported.selector), minSharesOut, zapCalls);
             return;
         }
 
         // 4. Execute deposit via external call to enable try/catch.
-        try this.executeStrategy(depositId, vault, receiver, token, amount, minAmountOut, zapCalls) returns (uint256 shares) {
+        try this.executeStrategy(depositId, vault, receiver, token, amount, minSharesOut, zapCalls) returns (uint256 shares) {
+            // Verify shares received meets user's minimum requirement
+            if (shares < minSharesOut) {
+                depositRecords[depositId].failureReason = abi.encodeWithSelector(SlippageExceeded.selector);
+                _handleDepositFailure(depositId, token, amount, abi.encodeWithSelector(SlippageExceeded.selector), minSharesOut, zapCalls);
+                return;
+            }
             depositRecords[depositId].sharesReceived = shares;
             _updateDepositStatus(depositId, DepositStatus.Success);
             emit DepositSuccess(depositId, receiver, vault, shares);
         } catch (bytes memory reason) {
             depositRecords[depositId].failureReason = reason;
-            _handleDepositFailure(depositId, token, amount, reason, minAmountOut, zapCalls);
+            _handleDepositFailure(depositId, token, amount, reason, minSharesOut, zapCalls);
         }
     }
 
@@ -152,17 +158,17 @@ abstract contract BaseCrosschainDepositAdapter is
      * @param payload The encoded payload from the source chain
      * @return vault Target vault address
      * @return receiver Address to receive vault shares
-     * @return minAmountOut Minimum amount expected (slippage protection)
+     * @return minSharesOut Minimum shares expected (slippage protection)
      * @return zapCalls Array of calls for zap execution
      * @dev This function is external to enable try/catch error handling for abi.decode
      */
     function decodePayload(bytes calldata payload) external pure returns (
         address vault,
         address receiver,
-        uint256 minAmountOut,
+        uint256 minSharesOut,
         Call[] memory zapCalls
     ) {
-        (vault, receiver, minAmountOut, zapCalls) = abi.decode(payload, (address, address, uint256, Call[]));
+        (vault, receiver, minSharesOut, zapCalls) = abi.decode(payload, (address, address, uint256, Call[]));
     }
 
     /**
@@ -172,7 +178,7 @@ abstract contract BaseCrosschainDepositAdapter is
      * @param receiver Address to receive vault shares
      * @param token Input token address
      * @param amount Amount of tokens to deposit
-     * @param minAmountOut Minimum amount of vault asset expected (for zap path)
+     * @param minSharesOut Minimum shares user must receive (end-to-end slippage protection)
      * @param zapCalls Array of calls for zap execution (empty for direct deposit)
      * @return shares Amount of vault shares minted
      * @dev This function is called internally via try/catch to handle failures gracefully
@@ -183,7 +189,7 @@ abstract contract BaseCrosschainDepositAdapter is
         address receiver,
         address token,
         uint256 amount,
-        uint256 minAmountOut,
+        uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external onlySelf returns (uint256 shares) {
         if (zapCalls.length > 0) {
@@ -194,18 +200,19 @@ abstract contract BaseCrosschainDepositAdapter is
             IERC20(token).forceApprove(address(zapExecutor), amount);
 
             // Execute swaps and deposit in a sandboxed contract.
+            // ZapExecutor enforces minSharesOut after zap + deposit.
             shares = zapExecutor.executeZapAndDeposit(
                 token,
                 amount,
                 vault,
                 receiver,
-                minAmountOut,
+                minSharesOut,
                 zapCalls
             );
 
             // Reset approval to minimize token approval risk.
             IERC20(token).forceApprove(address(zapExecutor), 0);
-            
+
             emit ZapExecuted(depositId, zapCalls.length, shares);
         } else {
             // Direct deposit path (token must match vault asset).
@@ -216,8 +223,8 @@ abstract contract BaseCrosschainDepositAdapter is
             IERC20(asset).forceApprove(vault, amount);
             shares = IElitraVault(vault).deposit(amount, receiver);
 
-            // Ensure user received minimum expected shares.
-            if (shares < minAmountOut) revert SlippageExceeded();
+            // Enforce end-to-end slippage protection.
+            if (shares < minSharesOut) revert SlippageExceeded();
 
             // Reset approval for defensive safety.
             IERC20(asset).forceApprove(vault, 0);
@@ -263,7 +270,7 @@ abstract contract BaseCrosschainDepositAdapter is
         address token,
         uint256 amount,
         bytes memory reason,
-        uint256 minAmountOut,
+        uint256 minSharesOut,
         Call[] memory zapCalls
     ) internal {
         address user = depositRecords[depositId].user;
@@ -277,7 +284,7 @@ abstract contract BaseCrosschainDepositAdapter is
         }
 
         // Try to enqueue for later resolution by operators.
-        try this._enqueueFailedDeposit(depositId, token, amount, reason, minAmountOut, zapCalls) {
+        try this._enqueueFailedDeposit(depositId, token, amount, reason, minSharesOut, zapCalls) {
             _updateDepositStatus(depositId, DepositStatus.Queued);
             emit DepositQueued(depositId, user, reason);
         } catch {
@@ -293,7 +300,7 @@ abstract contract BaseCrosschainDepositAdapter is
         address token,
         uint256 amount,
         bytes memory reason,
-        uint256 minAmountOut,
+        uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external onlySelf {
         // Load record to pass full context to the queue.
@@ -314,7 +321,7 @@ abstract contract BaseCrosschainDepositAdapter is
             record.guid,
             reason,
             sharePrice,
-            minAmountOut,
+            minSharesOut,
             zapCalls
         );
     }

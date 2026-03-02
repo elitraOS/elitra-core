@@ -127,7 +127,7 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
         uint256 amountReceived = balanceAfter - balanceBefore;
 
         // Decode CCTP message parts to extract deposit parameters.
-        (uint32 sourceDomain, address mintRecipient, bytes memory hookData) = _decodeMessage(message);
+        (uint32 sourceDomain, address mintRecipient, address messageSender, bytes memory hookData) = _decodeMessage(message);
 
         emit MessageRelayed(messageHash, sourceDomain, mintRecipient, amountReceived);
 
@@ -135,7 +135,8 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
         // Hook data format: abi.encode(vault, receiver, minAmountOut, zapCalls).
         if (hookData.length > 0) {
             // CCTP "sourceDomain" maps to "sourceId" in Base adapter.
-            _processReceivedFunds(mintRecipient, sourceDomain, usdc, amountReceived, messageHash, hookData);
+            // Use CCTP burn message sender as user context so zero receiver fallback/refunds target sender.
+            _processReceivedFunds(messageSender, sourceDomain, usdc, amountReceived, messageHash, hookData);
             hookSuccess = true;
         } else {
             revert("No hook data");
@@ -169,6 +170,7 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
      * @param message The raw CCTP burn message
      * @return sourceDomain CCTP domain ID of the source chain
      * @return mintRecipient Address that should receive the minted tokens
+     * @return messageSender Address that initiated burn message on source chain
      * @return hookData Additional data containing vault deposit parameters
      *
      * @dev Message structure (per CCTP V2 spec):
@@ -179,11 +181,12 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
      *      - ... (other fields)
      *      - Bytes 148+: Message body
      *          - Bytes 36-68 of body: Recipient (mintRecipient)
+     *          - Bytes 100-132 of body: Message sender
      *          - Bytes 228+: Optional hook data (if present)
      */
     function _decodeMessage(
         bytes calldata message
-    ) internal pure returns (uint32 sourceDomain, address mintRecipient, bytes memory hookData) {
+    ) internal pure returns (uint32 sourceDomain, address mintRecipient, address messageSender, bytes memory hookData) {
         // Extract source domain (bytes 4-8, formatted as uint32).
         sourceDomain = uint32(bytes4(message[4:8]));
 
@@ -193,6 +196,10 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
         // Extract mintRecipient from message body (offset 36-68).
         bytes32 recipientBytes32 = bytes32(messageBody[36:68]);
         mintRecipient = address(uint160(uint256(recipientBytes32)));
+
+        // Extract message sender from body (offset 100-132).
+        bytes32 messageSenderBytes32 = bytes32(messageBody[100:132]);
+        messageSender = address(uint160(uint256(messageSenderBytes32)));
 
         // Extract hookData if present (starts at offset 228 in body).
         // Hook data is appended by the sender and contains vault deposit instructions.
