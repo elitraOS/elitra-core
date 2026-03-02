@@ -122,6 +122,7 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
 
         // If the received token is native (maps to WETH), wrap it.
         // This handles cases where OFT is wrapping a native token (e.g., SEI -> WSEI).
+        // For zap paths that need native ETH, ZapExecutor can unwrap WETH as part of the zap calls.
         if (token == weth && msg.value > 0) {
             IWETH9(weth).deposit{ value: msg.value }();
         }

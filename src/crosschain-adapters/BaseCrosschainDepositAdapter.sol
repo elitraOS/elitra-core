@@ -109,7 +109,9 @@ abstract contract BaseCrosschainDepositAdapter is
         }
 
         // 4. Execute deposit via external call to enable try/catch.
-        try this.executeStrategy(depositId, vault, receiver, token, amount, minAmountOut, zapCalls) returns (uint256 shares) {
+        // Forward any native balance held by the contract for zap paths that need native ETH.
+        uint256 nativeBalance = address(this).balance;
+        try this.executeStrategy{value: nativeBalance}(depositId, vault, receiver, token, amount, minAmountOut, zapCalls) returns (uint256 shares) {
             depositRecords[depositId].sharesReceived = shares;
             _updateDepositStatus(depositId, DepositStatus.Success);
             emit DepositSuccess(depositId, receiver, vault, shares);
@@ -130,6 +132,7 @@ abstract contract BaseCrosschainDepositAdapter is
      * @param zapCalls Array of calls for zap execution (empty for direct deposit)
      * @return shares Amount of vault shares minted
      * @dev This function is called internally via try/catch to handle failures gracefully
+     * @dev Payable to allow forwarding native value to ZapExecutor for zap paths that need native ETH
      */
     function executeStrategy(
         uint256 depositId,
@@ -139,7 +142,7 @@ abstract contract BaseCrosschainDepositAdapter is
         uint256 amount,
         uint256 minAmountOut,
         Call[] calldata zapCalls
-    ) external onlySelf returns (uint256 shares) {
+    ) external payable onlySelf returns (uint256 shares) {
         if (zapCalls.length > 0) {
             // SECURITY: execute arbitrary calls only via ZapExecutor.
             if (address(zapExecutor) == address(0)) revert InvalidZapExecutor();
@@ -148,7 +151,8 @@ abstract contract BaseCrosschainDepositAdapter is
             IERC20(token).forceApprove(address(zapExecutor), amount);
 
             // Execute swaps and deposit in a sandboxed contract.
-            shares = zapExecutor.executeZapAndDeposit(
+            // Forward any native value received for zap paths that need native ETH (e.g., WETH unwrap).
+            shares = zapExecutor.executeZapAndDeposit{value: msg.value}(
                 token,
                 amount,
                 vault,
