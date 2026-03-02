@@ -5,7 +5,7 @@ import { Ownable } from "@openzeppelin/contracts/access/Ownable.sol";
 import { IFeeRegistry } from "../interfaces/IFeeRegistry.sol";
 
 /**
- * @title FeeRegistry
+ * @title Fee Registry
  * @author Elitra
  * @notice Protocol-controlled fee registry shared by vaults for managing protocol-level fee rates
  * @dev Stores global and per-vault protocol fee rates, with a maximum cap of 30%
@@ -13,6 +13,9 @@ import { IFeeRegistry } from "../interfaces/IFeeRegistry.sol";
 contract FeeRegistry is Ownable, IFeeRegistry {
     /// @notice Maximum protocol fee rate (30% in basis points)
     uint16 public constant MAX_PROTOCOL_RATE = 3000; // 30%
+
+    /// @notice Vault rate state tracks whether a vault uses global rate, custom rate, or is pending clear
+    enum VaultRateState { None, Active, PendingClear }
 
     struct RateSchedule {
         uint16 currentRateBps;
@@ -26,8 +29,11 @@ contract FeeRegistry is Ownable, IFeeRegistry {
     /// @notice Per-vault custom protocol fee rate schedules
     mapping(address vault => RateSchedule) internal _vaultSchedules;
 
-    /// @notice Whether a vault has a custom protocol rate (true = use vault schedule, false = use global)
-    mapping(address vault => bool) public hasCustomProtocolRate;
+    /// @notice State of each vault's rate configuration
+    mapping(address vault => VaultRateState) public vaultRateState;
+
+    /// @notice Per-vault timestamp when pending clear becomes effective (only used when state = PendingClear)
+    mapping(address vault => uint256) public vaultClearTimestamp;
 
     /// @notice Cooldown before protocol fee rate changes become effective (0 = immediate)
     uint256 public protocolFeeRateCooldown;
@@ -64,29 +70,52 @@ contract FeeRegistry is Ownable, IFeeRegistry {
         require(vault != address(0), "vault zero");
         require(newRateBps <= MAX_PROTOCOL_RATE, "rate too high");
         uint16 oldRate = _effectiveRateForVault(vault);
-        hasCustomProtocolRate[vault] = true;
+
+        // If transitioning from global to custom, initialize currentRateBps to current global rate
+        // This prevents the rate from dropping to 0 during the cooldown period
+        bool wasUsingGlobal = vaultRateState[vault] == VaultRateState.None;
+        vaultRateState[vault] = VaultRateState.Active;
+
+        if (wasUsingGlobal) {
+            _vaultSchedules[vault].currentRateBps = _effectiveRate(_globalSchedule);
+        }
+
         _syncAndGetCurrent(_vaultSchedules[vault]);
         _scheduleRate(_vaultSchedules[vault], newRateBps);
         emit ProtocolFeeRateForVaultUpdated(vault, oldRate, newRateBps);
     }
 
-    /// @notice Removes a custom protocol fee rate for a vault, reverting to global rate (immediate)
+    /// @notice Removes a custom protocol fee rate for a vault, reverting to global rate
     /// @param vault Address of the vault to clear the custom rate from
     function clearProtocolFeeRateBpsForVault(address vault) external onlyOwner {
         require(vault != address(0), "vault zero");
+        require(vaultRateState[vault] == VaultRateState.Active, "no custom rate");
+
         uint16 oldRate = _effectiveRateForVault(vault);
-        delete _vaultSchedules[vault];
-        delete hasCustomProtocolRate[vault];
-        emit ProtocolFeeRateForVaultUpdated(vault, oldRate, 0);
+
+        if (protocolFeeRateCooldown == 0) {
+            _clearVaultRate(vault, oldRate);
+        } else {
+            // Schedule the clear operation to respect cooldown
+            vaultRateState[vault] = VaultRateState.PendingClear;
+            vaultClearTimestamp[vault] = block.timestamp + protocolFeeRateCooldown;
+            emit ProtocolFeeRateForVaultUpdated(vault, oldRate, 0);
+        }
     }
 
     // ========================================= RATE GETTERS =========================================
+
+    /// @notice Syncs a vault's state (executes pending clears if cooldown has elapsed)
+    /// @param vault Address of the vault to sync
+    function syncVault(address vault) external {
+        _effectiveRateForVault(vault);
+    }
 
     /// @notice Gets the effective protocol fee rate for a specific vault
     /// @param vault Address of the vault to query
     /// @return The fee rate in basis points (custom rate if set, otherwise global rate)
     function protocolFeeRateBps(address vault) external view returns (uint16) {
-        return _effectiveRateForVault(vault);
+        return _effectiveRateForVaultView(vault);
     }
 
     /// @notice Gets the effective global protocol fee rate
@@ -103,6 +132,15 @@ contract FeeRegistry is Ownable, IFeeRegistry {
     /// @notice Gets the active per-vault custom protocol fee rate (without pending updates)
     function protocolFeeRateBpsByVault(address vault) external view returns (uint16) {
         return _vaultSchedules[vault].currentRateBps;
+    }
+
+    /// @notice Checks if a vault has a pending clear operation
+    /// @param vault Address of the vault to query
+    /// @return isPending True if a clear operation is pending
+    /// @return applyTimestamp Timestamp when the clear will become effective (0 if not pending)
+    function isProtocolRateClearPending(address vault) external view returns (bool, uint256) {
+        if (vaultRateState[vault] != VaultRateState.PendingClear) return (false, 0);
+        return (true, vaultClearTimestamp[vault]);
     }
 
     // ========================================= CONFIG =========================================
@@ -124,20 +162,65 @@ contract FeeRegistry is Ownable, IFeeRegistry {
 
     // ========================================= INTERNAL =========================================
 
+    /// @dev Clears a vault's custom rate, reverting to global rate
+    function _clearVaultRate(address vault, uint16 oldRate) internal {
+        delete _vaultSchedules[vault];
+        delete vaultClearTimestamp[vault];
+        vaultRateState[vault] = VaultRateState.None;
+        emit ProtocolFeeRateForVaultUpdated(vault, oldRate, 0);
+    }
+
+    /// @dev Resolves the effective rate for a vault (custom if set, otherwise global)
+    function _effectiveRateForVault(address vault) internal returns (uint16) {
+        VaultRateState state = vaultRateState[vault];
+
+        // Handle pending clear operation
+        if (state == VaultRateState.PendingClear) {
+            if (block.timestamp >= vaultClearTimestamp[vault]) {
+                uint16 oldRate = _effectiveRate(_vaultSchedules[vault]);
+                _clearVaultRate(vault, oldRate);
+                return _effectiveRate(_globalSchedule);
+            }
+            // Still in cooldown, return current vault rate
+            return _effectiveRate(_vaultSchedules[vault]);
+        }
+
+        // Active custom rate
+        if (state == VaultRateState.Active) {
+            return _effectiveRate(_vaultSchedules[vault]);
+        }
+
+        // No custom rate, use global
+        return _effectiveRate(_globalSchedule);
+    }
+
+    /// @dev View-only version of _effectiveRateForVault (does not execute pending clears)
+    function _effectiveRateForVaultView(address vault) internal view returns (uint16) {
+        VaultRateState state = vaultRateState[vault];
+
+        // Handle pending clear operation (view version)
+        if (state == VaultRateState.PendingClear) {
+            if (block.timestamp >= vaultClearTimestamp[vault]) {
+                return _effectiveRate(_globalSchedule);
+            }
+            return _effectiveRate(_vaultSchedules[vault]);
+        }
+
+        // Active custom rate
+        if (state == VaultRateState.Active) {
+            return _effectiveRate(_vaultSchedules[vault]);
+        }
+
+        // No custom rate, use global
+        return _effectiveRate(_globalSchedule);
+    }
+
     /// @dev Resolves the effective rate from a schedule (respects cooldown)
     function _effectiveRate(RateSchedule storage schedule) internal view returns (uint16) {
         if (schedule.applyTimestamp != 0 && block.timestamp >= schedule.applyTimestamp) {
             return schedule.pendingRateBps;
         }
         return schedule.currentRateBps;
-    }
-
-    /// @dev Resolves the effective rate for a vault (custom if set, otherwise global)
-    function _effectiveRateForVault(address vault) internal view returns (uint16) {
-        if (hasCustomProtocolRate[vault]) {
-            return _effectiveRate(_vaultSchedules[vault]);
-        }
-        return _effectiveRate(_globalSchedule);
     }
 
     /// @dev Syncs a matured pending rate into current and returns the current rate
