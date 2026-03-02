@@ -35,7 +35,7 @@ contract ZapExecutor {
      * @param amountIn Amount of input tokens to swap
      * @param vault Vault address to deposit into
      * @param receiver Address to receive vault shares
-     * @param minAmountOut Minimum amount of vault asset expected from zap
+     * @param minSharesOut Minimum shares user must receive (end-to-end slippage protection)
      * @param zapCalls Array of calls to execute for the zap (swaps, etc.)
      * @return shares Amount of vault shares minted to receiver
      * @dev This contract must hold 0 funds before and after this call. Reverts if zap fails, slippage exceeded, or deposit produces no shares
@@ -45,7 +45,7 @@ contract ZapExecutor {
         uint256 amountIn,
         address vault,
         address receiver,
-        uint256 minAmountOut,
+        uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external payable returns (uint256 shares) {
         // 1. Pull funds from Adapter.
@@ -58,18 +58,19 @@ contract ZapExecutor {
             if (!success) revert ZapFailed();
         }
 
-        // 3. Check output amount in vault asset.
+        // 3. Check output amount in vault asset after zap.
         address asset = IElitraVault(vault).asset();
         uint256 balance = IERC20(asset).balanceOf(address(this));
-        
-        // Enforce slippage limit and non-zero output.
-        if (balance < minAmountOut) revert SlippageExceeded();
+
+        // Ensure zap produced output.
         if (balance == 0) revert ZapProducedNoOutput();
 
         // 4. Deposit to vault and mint shares for receiver.
         IERC20(asset).forceApprove(vault, balance);
         shares = IElitraVault(vault).deposit(balance, receiver);
 
+        // Enforce end-to-end slippage protection (covers both zap and vault deposit).
+        if (shares < minSharesOut) revert SlippageExceeded();
         if (shares == 0) revert DepositFailedNoShares();
 
         // Sweep any leftover tokens/native directly to the receiver

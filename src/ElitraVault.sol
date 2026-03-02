@@ -13,6 +13,7 @@ import { FeeManager } from "./fees/FeeManager.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { Math } from "@openzeppelin/contracts/utils/math/Math.sol";
 import { ERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
 import { IERC20Upgradeable } from "@openzeppelin/contracts-upgradeable/token/ERC20/IERC20Upgradeable.sol";
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
@@ -94,10 +95,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @notice Internal function to update vault balance and price per share
     /// @param newAggregatedBalance The new aggregated balance from external protocols
     function _updateBalance(uint256 newAggregatedBalance) internal {
+        uint256 newPPS = _calculatePPS(totalSupply(), _netTotalAssets(newAggregatedBalance));
+
         // 1. Pull validation from balance update hook (read-only).
-        (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
-            lastPricePerShare, totalSupply(), _netTotalAssets(newAggregatedBalance)
-        );
+        bool shouldContinue = balanceUpdateHook.beforeBalanceUpdate(lastPricePerShare, newPPS);
 
         // 2. If hook signals out-of-bounds, pause the vault.
         if (!shouldContinue) {
@@ -169,13 +170,14 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @dev Manual hook for now (does not auto-accrue on deposit/withdraw/updateBalance).
     function takeFees() external requiresAuth {
         // Manual accrual; does not auto-run on other state changes.
-        _takeFees();
+        _takeFeesAndSyncPPS();
     }
 
     /// @notice Update fee rates (applied after cooldown)
     function updateFeeRates(uint16 managementRateBps, uint16 performanceRateBps) external requiresAuth {
         // Schedule new rates (subject to cooldown in FeeManager).
         _updateRates(Rates({ managementRate: managementRateBps, performanceRate: performanceRateBps }));
+        _syncLastPricePerShare();
     }
 
     /// @notice Set the manager fee receiver
@@ -209,7 +211,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
 
         // Accrue management/performance fees before computing redemption value.
-        _takeFees();
+        _takeFeesAndSyncPPS();
 
         // Gross assets before any exit fee.
         uint256 grossAssets = super.previewRedeem(shares);
@@ -250,7 +252,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     function fulfillRedeem(address owner, uint256 assets) external requiresAuth {
         // Take fees on every withdrawal (queued redemption fulfillment transfers assets out)
         // Accrue fees before transferring assets out.
-        _takeFees();
+        _takeFeesAndSyncPPS();
 
         PendingRedeem storage pending = _pendingRedeem[owner];
         // Ensure enough queued assets are available.
@@ -275,7 +277,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     /// @inheritdoc IElitraVault
     function cancelRedeem(address owner, uint256 assets) external requiresAuth {
         // Accrue fees before minting back shares.
-        _takeFees();
+        _takeFeesAndSyncPPS();
 
         PendingRedeem storage pending = _pendingRedeem[owner];
         // Ensure cancel amount is valid.
@@ -424,7 +426,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     {
         // Disallow stale NAV and accrue fees before minting shares.
         _requireFreshNav();
-        _takeFees();
+        _takeFeesAndSyncPPS();
         return super.deposit(assets, receiver);
     }
 
@@ -439,8 +441,24 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, IElitraVault 
     {
         // Disallow stale NAV and accrue fees before minting shares.
         _requireFreshNav();
-        _takeFees();
+        _takeFeesAndSyncPPS();
         return super.mint(shares, receiver);
+    }
+
+    /// @dev Accrue fees and then sync the cached PPS used by oracle threshold checks.
+    function _takeFeesAndSyncPPS() internal {
+        _takeFees();
+        _syncLastPricePerShare();
+    }
+
+    /// @dev Keep `lastPricePerShare` aligned with current supply/assets after non-oracle state changes.
+    function _syncLastPricePerShare() internal {
+        lastPricePerShare = _calculatePPS(totalSupply(), totalAssets());
+    }
+
+    function _calculatePPS(uint256 supply, uint256 assets) internal pure returns (uint256) {
+        if (supply == 0) return 1e18;
+        return Math.mulDiv(assets, 1e18, supply, Math.Rounding.Down);
     }
 
     /// @notice Withdraw is disabled - use requestRedeem instead

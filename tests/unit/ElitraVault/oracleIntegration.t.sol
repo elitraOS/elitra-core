@@ -5,10 +5,12 @@ import { ElitraVault_Base_Test } from "./Base.t.sol";
 
 contract OracleIntegration_Test is ElitraVault_Base_Test {
     address public alice;
+    address public strategy;
 
     function setUp() public override {
         super.setUp();
         alice = createUser("alice");
+        strategy = makeAddr("strategy");
 
         // Alice deposits 1000 USDC
         vm.prank(alice);
@@ -17,7 +19,7 @@ contract OracleIntegration_Test is ElitraVault_Base_Test {
         // Simulate 1000 deployed to strategy
         vm.prank(address(vault));
         // forge-lint: disable-next-line(erc20-unchecked-transfer)
-        asset.transfer(makeAddr("strategy"), 1000e6);
+        asset.transfer(strategy, 1000e6);
 
         // Initialize lastPricePerShare with 1000e6 aggregated balance (1:1 ratio)
         vm.prank(owner);
@@ -65,5 +67,24 @@ contract OracleIntegration_Test is ElitraVault_Base_Test {
         vm.expectRevert("UNAUTHORIZED");
         vm.prank(alice);
         vault.updateBalance(1000e6);
+    }
+
+    function test_UpdateBalance_DoesNotPauseAfterFeeDilution() public {
+        // Configure max management rate (10% annualized) to force >1% dilution over time.
+        vm.prank(owner);
+        vault.updateFeeRates(1000, 0);
+
+        // Accrue enough time so fee-minted shares dilute PPS by more than 1%.
+        skip(40 days);
+
+        vm.prank(owner);
+        vault.takeFees();
+
+        // `takeFees` should keep cached PPS in sync with dilution, avoiding false threshold trips.
+        vm.roll(block.number + 1);
+        vm.prank(owner);
+        vault.updateBalance(1000e6);
+
+        assertFalse(vault.paused());
     }
 }

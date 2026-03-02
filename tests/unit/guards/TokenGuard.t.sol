@@ -152,6 +152,30 @@ contract TokenGuardTest is Test {
         assertTrue(result, "Should return true for zero amount approve");
     }
 
+    function test_Validate_Approve_ZeroAmount_RemovedSpender_ReturnsTrue() public {
+        vm.prank(owner);
+        guard.setSpender(spender1, true);
+        vm.prank(owner);
+        guard.setSpender(spender1, false);
+
+        bytes memory data = abi.encodeWithSelector(guard.APPROVE_SELECTOR(), spender1, uint256(0));
+
+        bool result = guard.validate(user, data, 0);
+        assertTrue(result, "Should allow zero amount approve for removed spender");
+    }
+
+    function test_Validate_Approve_NonZeroAmount_RemovedSpender_ReturnsFalse() public {
+        vm.prank(owner);
+        guard.setSpender(spender1, true);
+        vm.prank(owner);
+        guard.setSpender(spender1, false);
+
+        bytes memory data = abi.encodeWithSelector(guard.APPROVE_SELECTOR(), spender1, uint256(1));
+
+        bool result = guard.validate(user, data, 0);
+        assertFalse(result, "Should block non-zero approve for removed spender");
+    }
+
     function test_Validate_Approve_MaxAmount_ReturnsTrue() public {
         vm.prank(owner);
         guard.setSpender(spender1, true);

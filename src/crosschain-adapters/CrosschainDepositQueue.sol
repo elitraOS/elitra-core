@@ -91,7 +91,7 @@ contract CrosschainDepositQueue is
         bytes32 guid,
         bytes calldata reason,
         uint256 sharePrice,
-        uint256 minAmountOut,
+        uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external override onlyAdapter {
         // Transfer tokens from adapter to this contract for custody.
@@ -111,7 +111,7 @@ contract CrosschainDepositQueue is
             failureReason: reason,
             timestamp: block.timestamp,
             sharePrice: sharePrice,
-            minAmountOut: minAmountOut,
+            minSharesOut: minSharesOut,
             zapCallsHash: keccak256(abi.encode(zapCalls)),
             status: DepositStatus.Failed
         });
@@ -154,13 +154,12 @@ contract CrosschainDepositQueue is
      */
     function fulfillFailedDeposit(
         uint256 depositId,
-        uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external override onlyOwnerOrOperator returns (uint256 sharesOut) {
         FailedDeposit storage deposit = failedDeposits[depositId];
         // Only unresolved failed deposits can be fulfilled.
         require(deposit.status == DepositStatus.Failed, "Not failed status");
-        require(minSharesOut > 0, "minSharesOut=0");
+        require(deposit.minSharesOut > 0, "minSharesOut=0");
         require(deposit.vault != address(0), "Invalid vault");
 
         IElitraVault vault = IElitraVault(deposit.vault);
@@ -175,7 +174,7 @@ contract CrosschainDepositQueue is
             // Reset approval for defensive safety.
             IERC20(vaultAsset).forceApprove(address(vault), 0);
 
-            require(sharesOut >= minSharesOut, "Shares below minimum");
+            require(sharesOut >= deposit.minSharesOut, "Shares below minimum");
         } else {
             // Zap path - verify zapCalls matches original attested data.
             require(zapExecutor != address(0), "Zap executor not set");
@@ -192,14 +191,14 @@ contract CrosschainDepositQueue is
                 deposit.amount,
                 deposit.vault,
                 deposit.user,
-                deposit.minAmountOut, // Use original attested minAmountOut
+                deposit.minSharesOut, // Use original attested minSharesOut for end-to-end slippage protection
                 zapCalls
             );
 
             // Reset approval for defensive safety.
             IERC20(deposit.token).forceApprove(zapExecutor, 0);
 
-            require(sharesOut >= minSharesOut, "Shares below minimum");
+            require(sharesOut >= deposit.minSharesOut, "Shares below minimum");
         }
 
         // Mark resolved after successful fulfillment.
