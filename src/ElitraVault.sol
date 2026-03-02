@@ -379,6 +379,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         requiresAuth
         nonReentrant
     {
+        // Preserve one-update-per-block invariant for operator-driven balance syncs too.
+        require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
+
         // Execute batch operations first (may change external balances).
         super.manageBatch(calls);
 
@@ -396,6 +399,10 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
 
         // Recompute PPS and apply hook checks.
         _updateBalance(newAggregatedUnderlyingBalances);
+
+        // Operator syncs refresh block/timestamp guards exactly like oracle syncs.
+        lastBlockUpdated = block.number;
+        lastTimestampUpdated = block.timestamp;
     }
 
     // ========================================= ERC4626 OVERRIDES =========================================
