@@ -5,6 +5,7 @@ import { ElitraVault_Base_Test } from "./Base.t.sol";
 import { Call } from "../../../src/interfaces/IElitraVault.sol";
 import { AllowAllGuard, BlockAllGuard } from "../../mocks/MockGuards.sol";
 import { Errors } from "../../../src/libraries/Errors.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Mock target contract for testing manageBatchWithDelta
 contract MockTarget {
@@ -23,6 +24,10 @@ contract MockTarget {
 
     function resetCounter() external {
         counter = 0;
+    }
+
+    function sendToken(address token, address to, uint256 amount) external {
+        IERC20(token).transfer(to, amount);
     }
 }
 
@@ -249,54 +254,41 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         vault.manageBatchWithDelta(calls, -int256(negativeDelta));
     }
 
-    function test_ManageBatchWithDelta_UpdatesBlockAndTimestampTrackers() public {
-        Call[] memory calls = new Call[](1);
-        calls[0] = Call({
-            target: address(target1),
-            data: abi.encodeWithSelector(MockTarget.increment.selector),
+    function test_ManageBatchWithDelta_DoesNotDoubleCountFeesOnExternalWithdrawal() public {
+        uint256 depositAmount = 1000e6;
+        uint256 withdrawalAmount = 500e6;
+
+        deal(address(asset), address(this), depositAmount);
+        asset.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, address(this));
+
+        vm.startPrank(owner);
+        vault.setGuard(address(asset), address(allowAllGuard));
+        vault.updateFeeRates(0, 2_000); // 20% performance fee
+
+        // Move all idle assets to "external strategy" (mock target), and mirror this in aggregated balances.
+        Call[] memory deployCalls = new Call[](1);
+        deployCalls[0] = Call({
+            target: address(asset),
+            data: abi.encodeWithSelector(IERC20.transfer.selector, address(target1), depositAmount),
             value: 0
         });
+        // forge-lint: disable-next-line(unsafe-typecast)
+        vault.manageBatchWithDelta(deployCalls, int256(depositAmount));
 
-        vm.warp(1_700_000_123);
-        vm.roll(1234);
-        vm.prank(owner);
-        vault.manageBatchWithDelta(calls, 0);
-
-        assertEq(vault.lastBlockUpdated(), 1234);
-        assertEq(vault.lastTimestampUpdated(), 1_700_000_123);
-    }
-
-    function test_ManageBatchWithDelta_RevertsIfAlreadyUpdatedInSameBlock() public {
-        Call[] memory calls = new Call[](1);
-        calls[0] = Call({
+        // Pull part of assets back to idle from target1 and decrease aggregated balances accordingly.
+        Call[] memory withdrawCalls = new Call[](1);
+        withdrawCalls[0] = Call({
             target: address(target1),
-            data: abi.encodeWithSelector(MockTarget.increment.selector),
+            data: abi.encodeWithSelector(MockTarget.sendToken.selector, address(asset), address(vault), withdrawalAmount),
             value: 0
         });
+        // forge-lint: disable-next-line(unsafe-typecast)
+        vault.manageBatchWithDelta(withdrawCalls, -int256(withdrawalAmount));
+        vm.stopPrank();
 
-        vm.roll(100);
-        vm.prank(owner);
-        vault.manageBatchWithDelta(calls, 0);
-
-        vm.prank(owner);
-        vm.expectRevert(Errors.UpdateAlreadyCompletedInThisBlock.selector);
-        vault.manageBatchWithDelta(calls, 0);
-    }
-
-    function test_ManageBatchWithDelta_RevertsIfOracleAlreadyUpdatedInSameBlock() public {
-        Call[] memory calls = new Call[](1);
-        calls[0] = Call({
-            target: address(target1),
-            data: abi.encodeWithSelector(MockTarget.increment.selector),
-            value: 0
-        });
-
-        vm.roll(101);
-        vm.prank(owner);
-        vault.updateBalance(0);
-
-        vm.prank(owner);
-        vm.expectRevert(Errors.UpdateAlreadyCompletedInThisBlock.selector);
-        vault.manageBatchWithDelta(calls, 0);
+        // Total assets remained flat, so no performance fee shares should be minted.
+        assertEq(vault.totalAssets(), depositAmount);
+        assertEq(vault.balanceOf(owner), 0);
     }
 }

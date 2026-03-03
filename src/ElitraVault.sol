@@ -127,6 +127,9 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         // Guard against multiple external syncs within the same block.
         require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
 
+        // Accrue fees before applying balance sync changes.
+        _takeFees();
+
         _updateBalance(newAggregatedBalance);
 
         // Update freshness trackers (external syncs reset NAV freshness).
@@ -379,6 +382,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         requiresAuth
         nonReentrant
     {
+        // Accrue fees before batch execution changes idle/external balances.
+        _takeFees();
         // Preserve one-update-per-block invariant for operator-driven balance syncs too.
         require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
 
