@@ -217,6 +217,7 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         // Simulate an external decrease in vault assets (e.g., loss, fee)
         uint256 negativeDelta = 50e6; // 50 USDC (5% decrease)
 
+        vm.roll(block.number + 1);
         vm.prank(owner);
         // forge-lint: disable-next-line(unsafe-typecast)
         vault.manageBatchWithDelta(calls, -int256(negativeDelta));
@@ -246,6 +247,7 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         // Try to decrease more than available balance
         uint256 negativeDelta = 200e6; // 200 USDC (more than 100 USDC balance)
 
+        vm.roll(block.number + 1);
         vm.prank(owner);
         vm.expectRevert("External delta exceeds balances");
         // forge-lint: disable-next-line(unsafe-typecast)

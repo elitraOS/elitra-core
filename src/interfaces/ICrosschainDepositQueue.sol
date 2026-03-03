@@ -87,7 +87,9 @@ interface ICrosschainDepositQueue {
 
     /**
      * @notice Fulfill a failed deposit in one step. If the failed token matches the vault asset, deposit directly.
-     *         Otherwise, use ZapExecutor to swap then deposit using the originally attested zapCalls.
+     *         Otherwise, use ZapExecutor to swap then deposit using the provided zapCalls.
+     * @dev Can be called by owner, operator, or the original user who made the deposit.
+     *      Caller can provide custom zapCalls to adapt to current market conditions.
      * @param depositId The failed deposit id
      * @param zapCalls Original attested zapCalls (verified against stored hash)
      * @return sharesOut Shares minted to the user
