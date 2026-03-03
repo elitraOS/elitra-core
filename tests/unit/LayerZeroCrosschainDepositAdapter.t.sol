@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 import { LayerZeroCrosschainDepositAdapter } from "../../src/crosschain-adapters/layerzero/LayerZeroCrosschainDepositAdapter.sol";
+import { ICrosschainDepositAdapter } from "../../src/interfaces/ICrosschainDepositAdapter.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 import { Call } from "../../src/interfaces/IVaultBase.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -243,6 +244,34 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
         assertEq(adapter.totalDeposits(), 1);
     }
 
+    function test_LzCompose_DecodeFailure_RefundsComposeFromInsteadOfOFT() public {
+        vm.startPrank(owner);
+        adapter.setSupportedOFT(address(token), address(oft), true);
+        adapter.setDepositQueue(address(0));
+        vm.stopPrank();
+
+        uint256 amount = 50e18;
+        deal(address(token), address(adapter), amount);
+
+        address composeFrom = makeAddr("composeFrom");
+        bytes32 guid = bytes32(uint256(2));
+        bytes memory malformedHookData = hex"";
+        bytes memory message = _encodeComposeMessage(
+            12345,
+            amount,
+            bytes32(uint256(uint160(composeFrom))),
+            malformedHookData
+        );
+
+        vm.prank(address(endpoint));
+        adapter.lzCompose(address(oft), guid, message, address(0), "");
+
+        ICrosschainDepositAdapter.DepositRecord memory record = adapter.getDepositRecord(0);
+        assertEq(record.user, composeFrom);
+        assertEq(token.balanceOf(composeFrom), amount);
+        assertEq(token.balanceOf(address(oft)), 0);
+    }
+
     // =========================================
     // receive
     // =========================================
@@ -288,12 +317,20 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
         uint256 amountLD,
         bytes memory composeMsg
     ) internal pure returns (bytes memory) {
+        return _encodeComposeMessage(srcEid, amountLD, bytes32(0), composeMsg);
+    }
+
+    function _encodeComposeMessage(
+        uint32 srcEid,
+        uint256 amountLD,
+        bytes32 composeFrom,
+        bytes memory composeMsg
+    ) internal pure returns (bytes memory) {
         // OFT compose message encoding per OFTComposeMsgCodec
         // Format: nonce(8) + srcEid(4) + amountLD(32) + composeMsg
         // composeMsg should include composeFrom(32) + actual message
-        // For testing, we use nonce=0 and composeFrom=address(0)
+        // For testing, we use nonce=0.
         uint64 nonce = 0;
-        bytes32 composeFrom = bytes32(0);
         bytes memory fullComposeMsg = abi.encodePacked(composeFrom, composeMsg);
         return abi.encodePacked(nonce, srcEid, amountLD, fullComposeMsg);
     }

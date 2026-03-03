@@ -4,6 +4,8 @@ pragma solidity 0.8.28;
 import { Test } from "forge-std/Test.sol";
 import { BaseCrosschainDepositAdapter } from "../../src/crosschain-adapters/BaseCrosschainDepositAdapter.sol";
 import { ICrosschainDepositAdapter } from "../../src/interfaces/ICrosschainDepositAdapter.sol";
+import { Call } from "../../src/interfaces/IVaultBase.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 
 // Mock implementation for testing
@@ -274,5 +276,58 @@ contract BaseCrosschainDepositAdapter_Test is Test {
 
         assertFalse(adapter.hasRole(adapter.DEFAULT_ADMIN_ROLE(), owner));
         assertFalse(adapter.hasRole(adapter.OPERATOR_ROLE(), owner));
+    }
+
+    function test_ProcessReceivedFunds_DecodeFailure_QueuesWithZeroSharePriceWhenVaultMissing() public {
+        MockFailedDepositQueue mockQueue = new MockFailedDepositQueue();
+
+        vm.prank(owner);
+        adapter.setDepositQueue(address(mockQueue));
+
+        uint256 amount = 100e18;
+        token.mint(address(adapter), amount);
+
+        bytes memory malformedPayload = hex"1234";
+
+        adapter.exposedProcessReceivedFunds(
+            user,
+            101,
+            address(token),
+            amount,
+            bytes32(uint256(7)),
+            malformedPayload
+        );
+
+        ICrosschainDepositAdapter.DepositRecord memory record = adapter.getDepositRecord(0);
+        assertEq(uint256(record.status), uint256(ICrosschainDepositAdapter.DepositStatus.Queued));
+        assertEq(mockQueue.lastUser(), user);
+        assertEq(mockQueue.lastVault(), address(0));
+        assertEq(mockQueue.lastSharePrice(), 0);
+        assertEq(token.balanceOf(address(mockQueue)), amount);
+        assertEq(token.balanceOf(address(adapter)), 0);
+    }
+}
+
+contract MockFailedDepositQueue {
+    address public lastUser;
+    address public lastVault;
+    uint256 public lastSharePrice;
+
+    function recordFailedDeposit(
+        address user_,
+        uint32,
+        address token_,
+        uint256 amount_,
+        address vault_,
+        bytes32,
+        bytes calldata,
+        uint256 sharePrice_,
+        uint256,
+        Call[] calldata
+    ) external {
+        IERC20(token_).transferFrom(msg.sender, address(this), amount_);
+        lastUser = user_;
+        lastVault = vault_;
+        lastSharePrice = sharePrice_;
     }
 }

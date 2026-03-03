@@ -310,7 +310,8 @@ abstract contract BaseCrosschainDepositAdapter is
         IERC20(token).forceApprove(depositQueue, amount);
 
         // Snapshot share price for later user-facing reconciliation.
-        uint256 sharePrice = IElitraVault(record.vault).lastPricePerShare();
+        // Decode failures can produce vault=0; in that case keep sharePrice=0.
+        uint256 sharePrice = record.vault == address(0) ? 0 : IElitraVault(record.vault).lastPricePerShare();
 
         ICrosschainDepositQueue(depositQueue).recordFailedDeposit(
             record.user,
