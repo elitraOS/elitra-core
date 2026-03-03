@@ -5,6 +5,7 @@ import { ElitraVault_Base_Test } from "./Base.t.sol";
 import { Call } from "../../../src/interfaces/IElitraVault.sol";
 import { AllowAllGuard, BlockAllGuard } from "../../mocks/MockGuards.sol";
 import { Errors } from "../../../src/libraries/Errors.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Mock target contract for testing manageBatchWithDelta
 contract MockTarget {
@@ -23,6 +24,10 @@ contract MockTarget {
 
     function resetCounter() external {
         counter = 0;
+    }
+
+    function sendToken(address token, address to, uint256 amount) external {
+        IERC20(token).transfer(to, amount);
     }
 }
 
@@ -212,6 +217,7 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         // Simulate an external decrease in vault assets (e.g., loss, fee)
         uint256 negativeDelta = 50e6; // 50 USDC (5% decrease)
 
+        vm.roll(block.number + 1);
         vm.prank(owner);
         // forge-lint: disable-next-line(unsafe-typecast)
         vault.manageBatchWithDelta(calls, -int256(negativeDelta));
@@ -241,9 +247,48 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         // Try to decrease more than available balance
         uint256 negativeDelta = 200e6; // 200 USDC (more than 100 USDC balance)
 
+        vm.roll(block.number + 1);
         vm.prank(owner);
         vm.expectRevert("External delta exceeds balances");
         // forge-lint: disable-next-line(unsafe-typecast)
         vault.manageBatchWithDelta(calls, -int256(negativeDelta));
+    }
+
+    function test_ManageBatchWithDelta_DoesNotDoubleCountFeesOnExternalWithdrawal() public {
+        uint256 depositAmount = 1000e6;
+        uint256 withdrawalAmount = 500e6;
+
+        deal(address(asset), address(this), depositAmount);
+        asset.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, address(this));
+
+        vm.startPrank(owner);
+        vault.setGuard(address(asset), address(allowAllGuard));
+        vault.updateFeeRates(0, 2_000); // 20% performance fee
+
+        // Move all idle assets to "external strategy" (mock target), and mirror this in aggregated balances.
+        Call[] memory deployCalls = new Call[](1);
+        deployCalls[0] = Call({
+            target: address(asset),
+            data: abi.encodeWithSelector(IERC20.transfer.selector, address(target1), depositAmount),
+            value: 0
+        });
+        // forge-lint: disable-next-line(unsafe-typecast)
+        vault.manageBatchWithDelta(deployCalls, int256(depositAmount));
+
+        // Pull part of assets back to idle from target1 and decrease aggregated balances accordingly.
+        Call[] memory withdrawCalls = new Call[](1);
+        withdrawCalls[0] = Call({
+            target: address(target1),
+            data: abi.encodeWithSelector(MockTarget.sendToken.selector, address(asset), address(vault), withdrawalAmount),
+            value: 0
+        });
+        // forge-lint: disable-next-line(unsafe-typecast)
+        vault.manageBatchWithDelta(withdrawCalls, -int256(withdrawalAmount));
+        vm.stopPrank();
+
+        // Total assets remained flat, so no performance fee shares should be minted.
+        assertEq(vault.totalAssets(), depositAmount);
+        assertEq(vault.balanceOf(owner), 0);
     }
 }
