@@ -57,6 +57,7 @@ abstract contract BaseCrosschainDepositAdapter is
     error TokenMismatch();
     error InvalidZapExecutor();
     error SlippageExceeded();
+    error PayloadDecodeFailed();
 
     // ================== INIT ==================
 
@@ -92,9 +93,36 @@ abstract contract BaseCrosschainDepositAdapter is
         bytes32 messageId, // guid or messageHash
         bytes memory payload
     ) internal {
-        // 1. Decode payload from source chain (vault, receiver, minSharesOut, zapCalls).
-        (address vault, address receiver, uint256 minSharesOut, Call[] memory zapCalls) =
-            abi.decode(payload, (address, address, uint256, Call[]));
+        // 1. Decode payload from source chain (vault, receiver, minOut, zapCalls).
+        // Use try/catch to handle malformed payloads gracefully.
+        address vault;
+        address receiver;
+        uint256 minSharesOut;
+        Call[] memory zapCalls;
+
+        try this.decodePayload(payload) returns (
+            address _vault,
+            address _receiver,
+            uint256 _minSharesOut,
+            Call[] memory _zapCalls
+        ) {
+            vault = _vault;
+            receiver = _receiver;
+            minSharesOut = _minSharesOut;
+            zapCalls = _zapCalls;
+        } catch {
+            // Payload decode failed - record deposit with user as receiver and handle failure.
+            uint256 failedDepositId = _recordDeposit(user, sourceId, token, amount, address(0), messageId);
+            _handleDepositFailure(
+                failedDepositId,
+                token,
+                amount,
+                abi.encodeWithSelector(PayloadDecodeFailed.selector),
+                0,
+                new Call[](0)
+            );
+            return;
+        }
 
         // Default receiver to the sender if not provided.
         if (receiver == address(0)) receiver = user;
@@ -123,6 +151,24 @@ abstract contract BaseCrosschainDepositAdapter is
             depositRecords[depositId].failureReason = reason;
             _handleDepositFailure(depositId, token, amount, reason, minSharesOut, zapCalls);
         }
+    }
+
+    /**
+     * @notice External function to decode payload (enables try/catch for decode failures)
+     * @param payload The encoded payload from the source chain
+     * @return vault Target vault address
+     * @return receiver Address to receive vault shares
+     * @return minSharesOut Minimum shares expected (slippage protection)
+     * @return zapCalls Array of calls for zap execution
+     * @dev This function is external to enable try/catch error handling for abi.decode
+     */
+    function decodePayload(bytes calldata payload) external pure returns (
+        address vault,
+        address receiver,
+        uint256 minSharesOut,
+        Call[] memory zapCalls
+    ) {
+        (vault, receiver, minSharesOut, zapCalls) = abi.decode(payload, (address, address, uint256, Call[]));
     }
 
     /**
@@ -264,7 +310,8 @@ abstract contract BaseCrosschainDepositAdapter is
         IERC20(token).forceApprove(depositQueue, amount);
 
         // Snapshot share price for later user-facing reconciliation.
-        uint256 sharePrice = IElitraVault(record.vault).lastPricePerShare();
+        // Decode failures can produce vault=0; in that case keep sharePrice=0.
+        uint256 sharePrice = record.vault == address(0) ? 0 : IElitraVault(record.vault).lastPricePerShare();
 
         ICrosschainDepositQueue(depositQueue).recordFailedDeposit(
             record.user,
