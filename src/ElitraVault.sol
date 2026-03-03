@@ -171,6 +171,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
     /// @notice Take management/performance fees by minting shares to fee receivers.
     /// @dev Manual hook for now (does not auto-accrue on deposit/withdraw/updateBalance).
     function takeFees() external requiresAuth {
+        // Require fresh NAV for accurate fee calculation.
+        _requireFreshNav();
         // Manual accrual; does not auto-run on other state changes.
         _takeFeesAndSyncPPS();
     }
@@ -212,6 +214,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         require(owner == msg.sender, Errors.NotSharesOwner());
         require(balanceOf(owner) >= shares, Errors.InsufficientShares());
 
+        // Require fresh NAV for accurate fee calculation.
+        _requireFreshNav();
         // Accrue management/performance fees before computing redemption value.
         _takeFeesAndSyncPPS();
 
@@ -223,8 +227,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
             redemptionHook.beforeRedeem(this, shares, grossAssets, owner);
 
         if (mode == RedemptionMode.INSTANT) {
-            // Instant redemptions require fresh NAV.
-            _requireFreshNav();
             // _withdraw internally deducts withdrawFee from actualGrossAssets
             // and sends the net amount to the owner. Fee fires exactly once.
             _withdraw(owner, owner, owner, actualGrossAssets, shares);
@@ -234,7 +236,6 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
             return assetsToUser;
         } else if (mode == RedemptionMode.QUEUED) {
             // Queue the redemption: burn shares now, transfer assets later.
-            _requireFreshNav();
             _burn(owner, shares);
             
             // Track reserved assets to exclude from NAV.
