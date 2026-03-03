@@ -84,6 +84,7 @@ contract CrosschainDepositQueue_Test is Test {
             1, // srcEid
             address(token),
             amount,
+            0,
             makeAddr("vault"),
             bytes32(0),
             "",
@@ -121,6 +122,7 @@ contract CrosschainDepositQueue_Test is Test {
             1,
             address(token),
             amount,
+            0,
             vault,
             bytes32(0),
             "",
@@ -138,6 +140,50 @@ contract CrosschainDepositQueue_Test is Test {
             1,
             address(token),
             100e18,
+            0,
+            makeAddr("vault"),
+            bytes32(0),
+            "",
+            1e18,
+            0,
+            new Call[](0)
+        );
+    }
+
+    function test_RecordFailedDeposit_NativeOnly_Success() public {
+        uint256 nativeAmount = 1 ether;
+        vm.deal(adapter, nativeAmount);
+
+        vm.prank(adapter);
+        queue.recordFailedDeposit{value: nativeAmount}(
+            user,
+            1,
+            address(0),
+            0,
+            nativeAmount,
+            makeAddr("vault"),
+            bytes32(0),
+            "",
+            1e18,
+            0,
+            new Call[](0)
+        );
+
+        ICrosschainDepositQueue.FailedDeposit memory deposit = queue.getFailedDeposit(0);
+        assertEq(deposit.nativeAmount, nativeAmount);
+        assertEq(address(queue).balance, nativeAmount);
+    }
+
+    function test_RecordFailedDeposit_RevertsOnNativeAmountMismatch() public {
+        vm.deal(adapter, 1 ether);
+        vm.prank(adapter);
+        vm.expectRevert("Native amount mismatch");
+        queue.recordFailedDeposit{value: 1 ether}(
+            user,
+            1,
+            address(0),
+            0,
+            2 ether,
             makeAddr("vault"),
             bytes32(0),
             "",
@@ -215,6 +261,7 @@ contract CrosschainDepositQueue_Test is Test {
             1,
             address(token),
             amount,
+            0,
             makeAddr("vault"),
             bytes32(0),
             "",
@@ -245,6 +292,7 @@ contract CrosschainDepositQueue_Test is Test {
             1,
             address(token),
             amount,
+            0,
             makeAddr("vault"),
             bytes32(0),
             "",
@@ -264,6 +312,32 @@ contract CrosschainDepositQueue_Test is Test {
         queue.refundFailedDeposit(0);
     }
 
+    function test_RefundFailedDeposit_ReturnsNative() public {
+        uint256 nativeAmount = 1 ether;
+        vm.deal(adapter, nativeAmount);
+
+        vm.prank(adapter);
+        queue.recordFailedDeposit{value: nativeAmount}(
+            user,
+            1,
+            address(0),
+            0,
+            nativeAmount,
+            makeAddr("vault"),
+            bytes32(0),
+            "",
+            1e18,
+            0,
+            new Call[](0)
+        );
+
+        uint256 before = user.balance;
+        vm.prank(user);
+        queue.refundFailedDeposit(0);
+
+        assertEq(user.balance, before + nativeAmount);
+    }
+
     // =========================================
     // view functions
     // =========================================
@@ -281,6 +355,7 @@ contract CrosschainDepositQueue_Test is Test {
             1,
             address(token),
             amount,
+            0,
             vault,
             bytes32(0),
             "",
@@ -312,6 +387,7 @@ contract CrosschainDepositQueue_Test is Test {
             1,
             address(token),
             amount,
+            0,
             makeAddr("vault"),
             bytes32(0),
             "",
@@ -332,6 +408,7 @@ contract CrosschainDepositQueue_Test is Test {
             1,
             address(token),
             amount,
+            0,
             makeAddr("vault"),
             bytes32(0),
             "",

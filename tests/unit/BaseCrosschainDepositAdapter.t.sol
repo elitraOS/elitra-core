@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import { Test } from "forge-std/Test.sol";
 import { BaseCrosschainDepositAdapter } from "../../src/crosschain-adapters/BaseCrosschainDepositAdapter.sol";
 import { ICrosschainDepositAdapter } from "../../src/interfaces/ICrosschainDepositAdapter.sol";
+import { Call } from "../../src/interfaces/IVaultBase.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 
 // Mock implementation for testing
@@ -21,10 +22,11 @@ contract MockAdapter is BaseCrosschainDepositAdapter {
         uint32 sourceId,
         address token,
         uint256 amount,
+        uint256 nativeAmount,
         bytes32 messageId,
         bytes memory payload
     ) external {
-        _processReceivedFunds(user, sourceId, token, amount, messageId, payload);
+        _processReceivedFunds(user, sourceId, token, amount, nativeAmount, messageId, payload);
     }
 }
 
@@ -274,5 +276,154 @@ contract BaseCrosschainDepositAdapter_Test is Test {
 
         assertFalse(adapter.hasRole(adapter.DEFAULT_ADMIN_ROLE(), owner));
         assertFalse(adapter.hasRole(adapter.OPERATOR_ROLE(), owner));
+    }
+
+    function test_ProcessReceivedFunds_DoesNotForwardPreexistingEthBalance() public {
+        MockZapExecutor zap = new MockZapExecutor();
+        MockVaultPPS mockVault = new MockVaultPPS(address(token));
+
+        MockAdapter localAdapter = new MockAdapter();
+        localAdapter.initialize(owner, address(0), address(zap));
+
+        vm.prank(owner);
+        localAdapter.setSupportedVault(address(mockVault), true);
+
+        vm.deal(address(localAdapter), 5 ether);
+        token.mint(address(localAdapter), 100e18);
+
+        Call[] memory zapCalls = new Call[](1);
+        zapCalls[0] = Call({ target: address(this), value: 0, data: "" });
+        bytes memory payload = abi.encode(address(mockVault), user, 0, zapCalls);
+
+        localAdapter.exposedProcessReceivedFunds(
+            user, 1, address(token), 100e18, 0, bytes32(uint256(1)), payload
+        );
+
+        assertEq(zap.lastValue(), 0);
+        assertEq(address(localAdapter).balance, 5 ether);
+    }
+
+    function test_ProcessReceivedFunds_FailureRefundsNativeAndTokenWithoutQueue() public {
+        MockRevertingZapExecutor zap = new MockRevertingZapExecutor();
+        MockVaultPPS mockVault = new MockVaultPPS(address(token));
+
+        MockAdapter localAdapter = new MockAdapter();
+        localAdapter.initialize(owner, address(0), address(zap));
+
+        vm.prank(owner);
+        localAdapter.setSupportedVault(address(mockVault), true);
+
+        vm.deal(address(localAdapter), 1 ether);
+        token.mint(address(localAdapter), 100e18);
+
+        Call[] memory zapCalls = new Call[](1);
+        zapCalls[0] = Call({ target: address(this), value: 0, data: "" });
+        bytes memory payload = abi.encode(address(mockVault), user, 0, zapCalls);
+
+        localAdapter.exposedProcessReceivedFunds(
+            user, 1, address(token), 100e18, 1 ether, bytes32(uint256(1)), payload
+        );
+
+        assertEq(user.balance, 1 ether);
+        assertEq(token.balanceOf(user), 100e18);
+        assertEq(address(localAdapter).balance, 0);
+    }
+
+    function test_ProcessReceivedFunds_FailureQueuesNativeAndToken() public {
+        MockRevertingZapExecutor zap = new MockRevertingZapExecutor();
+        MockVaultPPS mockVault = new MockVaultPPS(address(token));
+        MockQueueCapture queueCapture = new MockQueueCapture();
+
+        MockAdapter localAdapter = new MockAdapter();
+        localAdapter.initialize(owner, address(queueCapture), address(zap));
+
+        vm.prank(owner);
+        localAdapter.setSupportedVault(address(mockVault), true);
+
+        vm.deal(address(localAdapter), 1 ether);
+        token.mint(address(localAdapter), 100e18);
+
+        Call[] memory zapCalls = new Call[](1);
+        zapCalls[0] = Call({ target: address(this), value: 0, data: "" });
+        bytes memory payload = abi.encode(address(mockVault), user, 0, zapCalls);
+
+        localAdapter.exposedProcessReceivedFunds(
+            user, 1, address(token), 100e18, 1 ether, bytes32(uint256(1)), payload
+        );
+
+        assertEq(queueCapture.lastNativeAmount(), 1 ether);
+        assertEq(queueCapture.lastToken(), address(token));
+        assertEq(queueCapture.lastAmount(), 100e18);
+        assertEq(queueCapture.lastUser(), user);
+
+        ICrosschainDepositAdapter.DepositRecord memory record = localAdapter.getDepositRecord(0);
+        assertEq(uint8(record.status), uint8(ICrosschainDepositAdapter.DepositStatus.Queued));
+    }
+}
+
+contract MockZapExecutor {
+    uint256 public lastValue;
+
+    function executeZapAndDeposit(
+        address,
+        uint256,
+        address,
+        address,
+        uint256,
+        Call[] calldata
+    ) external payable returns (uint256 shares) {
+        lastValue = msg.value;
+        shares = 1;
+    }
+}
+
+contract MockRevertingZapExecutor {
+    function executeZapAndDeposit(
+        address,
+        uint256,
+        address,
+        address,
+        uint256,
+        Call[] calldata
+    ) external payable returns (uint256) {
+        revert("zap failed");
+    }
+}
+
+contract MockVaultPPS {
+    address public asset;
+
+    constructor(address _asset) {
+        asset = _asset;
+    }
+
+    function lastPricePerShare() external pure returns (uint256) {
+        return 1e18;
+    }
+}
+
+contract MockQueueCapture {
+    address public lastUser;
+    address public lastToken;
+    uint256 public lastAmount;
+    uint256 public lastNativeAmount;
+
+    function recordFailedDeposit(
+        address user,
+        uint32,
+        address token,
+        uint256 amount,
+        uint256 nativeAmount,
+        address,
+        bytes32,
+        bytes calldata,
+        uint256,
+        uint256,
+        Call[] calldata
+    ) external payable {
+        lastUser = user;
+        lastToken = token;
+        lastAmount = amount;
+        lastNativeAmount = nativeAmount;
     }
 }

@@ -136,7 +136,7 @@ contract CCTPCrosschainDepositAdapter is BaseCrosschainDepositAdapter {
         if (hookData.length > 0) {
             // CCTP "sourceDomain" maps to "sourceId" in Base adapter.
             // Use CCTP burn message sender as user context so zero receiver fallback/refunds target sender.
-            _processReceivedFunds(messageSender, sourceDomain, usdc, amountReceived, messageHash, hookData);
+            _processReceivedFunds(messageSender, sourceDomain, usdc, amountReceived, 0, messageHash, hookData);
             hookSuccess = true;
         } else {
             revert("No hook data");

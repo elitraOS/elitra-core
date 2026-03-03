@@ -5,6 +5,7 @@ import { BaseCrosschainDepositAdapter } from "../BaseCrosschainDepositAdapter.so
 import { IOAppComposer } from "@layerzerolabs/oapp-evm/contracts/oapp/interfaces/IOAppComposer.sol";
 import { ILayerZeroEndpointV2 } from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
 import { OFTComposeMsgCodec } from "@layerzerolabs/oapp-evm/contracts/oft/libs/OFTComposeMsgCodec.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { IWETH9 } from "../../interfaces/IWETH9.sol";
 
 /**
@@ -123,8 +124,10 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
         // If the received token is native (maps to WETH), wrap it.
         // This handles cases where OFT is wrapping a native token (e.g., SEI -> WSEI).
         // For zap paths that need native ETH, ZapExecutor can unwrap WETH as part of the zap calls.
+        uint256 nativeAmount = msg.value;
         if (token == weth && msg.value > 0) {
             IWETH9(weth).deposit{ value: msg.value }();
+            nativeAmount = 0;
         }
 
         // Take all of the token balance to ensure we process exactly what the adapter holds.
@@ -133,7 +136,7 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
 
         // Execute the vault deposit using base adapter logic.
         // srcEid serves as the source identifier for tracking.
-        _processReceivedFunds(_from, srcEid, token, amountIn, _guid, composeMsg);
+        _processReceivedFunds(_from, srcEid, token, amountIn, nativeAmount, _guid, composeMsg);
     }
 
     // ================== ADMIN FUNCTIONS ==================
