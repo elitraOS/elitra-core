@@ -89,7 +89,7 @@ contract CrosschainDepositQueue_Test is Test {
             bytes32(0),
             "",
             1e18,
-            0,
+            1,
             new Call[](0)
         );
         vm.stopPrank();
@@ -127,7 +127,7 @@ contract CrosschainDepositQueue_Test is Test {
             bytes32(0),
             "",
             1e18,
-            0,
+            1,
             new Call[](0)
         );
         vm.stopPrank();
@@ -188,7 +188,7 @@ contract CrosschainDepositQueue_Test is Test {
             bytes32(0),
             "",
             1e18,
-            0,
+            1,
             new Call[](0)
         );
     }
@@ -266,7 +266,7 @@ contract CrosschainDepositQueue_Test is Test {
             bytes32(0),
             "",
             1e18,
-            0,
+            1,
             new Call[](0)
         );
         vm.stopPrank();
@@ -297,7 +297,7 @@ contract CrosschainDepositQueue_Test is Test {
             bytes32(0),
             "",
             1e18,
-            0,
+            1,
             new Call[](0)
         );
         vm.stopPrank();
@@ -360,7 +360,7 @@ contract CrosschainDepositQueue_Test is Test {
             bytes32(0),
             "",
             1e18,
-            0,
+            1,
             new Call[](0)
         );
         vm.stopPrank();
@@ -392,7 +392,7 @@ contract CrosschainDepositQueue_Test is Test {
             bytes32(0),
             "",
             1e18,
-            0,
+            1,
             new Call[](0)
         );
         vm.stopPrank();
@@ -413,7 +413,7 @@ contract CrosschainDepositQueue_Test is Test {
             bytes32(0),
             "",
             1e18,
-            0,
+            1,
             new Call[](0)
         );
         vm.stopPrank();

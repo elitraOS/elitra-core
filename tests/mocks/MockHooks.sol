@@ -12,7 +12,6 @@ import { IElitraVault } from "../../src/interfaces/IElitraVault.sol";
 contract MockBalanceUpdateHook is IBalanceUpdateHook {
     uint256 public override maxPercentageChange;
     bool public shouldReject;
-    uint256 public fixedPPS;
 
     constructor(uint256 _maxPercentageChange, bool _shouldReject) {
         maxPercentageChange = _maxPercentageChange;
@@ -27,33 +26,11 @@ contract MockBalanceUpdateHook is IBalanceUpdateHook {
         shouldReject = _shouldReject;
     }
 
-    function setFixedPPS(uint256 _fixedPPS) external {
-        fixedPPS = _fixedPPS;
-    }
-
-    function beforeBalanceUpdate(
-        uint256 /*currentPPS*/,
-        uint256 totalSupply,
-        uint256 totalAssets
-    )
-        external
-        view
-        override
-        returns (bool shouldContinue, uint256 newPPS)
-    {
+    function beforeBalanceUpdate(uint256 /*currentPPS*/, uint256 /*newPPS*/) external view override returns (bool) {
         if (shouldReject) {
-            return (false, 0);
+            return false;
         }
-
-        newPPS = totalSupply > 0
-            ? (totalAssets * 1e18) / totalSupply
-            : 1e18;
-
-        if (fixedPPS > 0) {
-            newPPS = fixedPPS;
-        }
-
-        return (true, newPPS);
+        return true;
     }
 
     function afterBalanceUpdate(

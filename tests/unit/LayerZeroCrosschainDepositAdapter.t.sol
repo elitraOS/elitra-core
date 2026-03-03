@@ -187,7 +187,7 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
         deal(address(token), address(adapter), 100e18);
 
         bytes32 guid = bytes32(uint256(1));
-        bytes memory hookData = abi.encode(address(vault), makeAddr("receiver"), 0, new Call[](0));
+        bytes memory hookData = abi.encode(address(vault), makeAddr("receiver"), 1, new Call[](0));
         bytes memory message = _encodeComposeMessage(12345, 100e18, hookData);
 
         vm.startPrank(address(endpoint));
@@ -209,7 +209,7 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
 
         bytes32 guid = bytes32(uint256(1));
         address receiver = makeAddr("receiver");
-        bytes memory hookData = abi.encode(address(vault), receiver, 0, new Call[](0));
+        bytes memory hookData = abi.encode(address(vault), receiver, 1, new Call[](0));
         bytes memory message = _encodeComposeMessage(12345, 100e18, hookData);
 
         vm.startPrank(address(endpoint));
@@ -233,7 +233,7 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
         deal(address(token), address(adapter), amount);
 
         bytes32 guid = bytes32(uint256(1));
-        bytes memory hookData = abi.encode(address(vault), makeAddr("receiver"), 0, new Call[](0));
+        bytes memory hookData = abi.encode(address(vault), makeAddr("receiver"), 1, new Call[](0));
         bytes memory message = _encodeComposeMessage(12345, amount, hookData);
 
         vm.startPrank(address(endpoint));
