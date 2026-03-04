@@ -4,7 +4,7 @@ pragma solidity 0.8.28;
 import { IERC4626Upgradeable } from "@openzeppelin/contracts-upgradeable/interfaces/IERC4626Upgradeable.sol";
 import { IBalanceUpdateHook } from "./IBalanceUpdateHook.sol";
 import { IRedemptionHook } from "./IRedemptionHook.sol";
-import { IVaultBase, Call } from "./IVaultBase.sol";
+import { IVaultBase } from "./IVaultBase.sol";
 import { IFeeManager } from "../fees/FeeManager.sol";
 
 /// @title IElitraVault
@@ -42,6 +42,7 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase, IFeeManager {
     // NAV freshness
     function navFreshnessThreshold() external view returns (uint256);
     function lastTimestampUpdated() external view returns (uint256);
+    function pendingOracleSyncAfterManageBatch() external view returns (bool);
     function setNavFreshnessThreshold(uint256 threshold) external;
 
     // Redemption hook integration
@@ -52,7 +53,6 @@ interface IElitraVault is IERC4626Upgradeable, IVaultBase, IFeeManager {
     function fulfillRedeem(address owner, uint256 assets) external;
     function cancelRedeem(address owner, uint256 assets) external;
     function pendingRedeemRequest(address user) external view returns (uint256 assets);
-    function manageBatchWithDelta(Call[] calldata calls, int256 externalDelta) external payable;
 
     // Fee management (setters and mutators - view functions in IFeeManager)
     function setDepositFee(uint256 newFee) external;

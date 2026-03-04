@@ -2,8 +2,9 @@
 pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
-import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
+import { IElitraVault } from "./interfaces/IElitraVault.sol";
 import { IVaultBase } from "./interfaces/IVaultBase.sol";
+import { Call } from "./interfaces/IVaultBase.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
@@ -42,6 +43,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
     uint256 public navFreshnessThreshold;
     // Timestamp of last NAV update.
     uint256 public lastTimestampUpdated;
+    // Whether strategy execution has paused the vault pending oracle sync.
+    bool public pendingOracleSyncAfterManageBatch;
 
     // Redemption state
     // Hook that decides redemption mode and amount.
@@ -95,7 +98,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
 
     /// @notice Internal function to update vault balance and price per share
     /// @param newAggregatedBalance The new aggregated balance from external protocols
-    function _updateBalance(uint256 newAggregatedBalance) internal {
+    function _updateBalance(uint256 newAggregatedBalance) internal returns (bool didUpdate) {
         // 1. Pull validation from balance update hook (read-only).
         (bool shouldContinue, uint256 newPPS) = balanceUpdateHook.beforeBalanceUpdate(
             lastPricePerShare, totalSupply(), _netTotalAssets(newAggregatedBalance)
@@ -105,7 +108,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         if (!shouldContinue) {
             _pause();
             emit VaultPausedDueToThreshold(block.timestamp, lastPricePerShare, newPPS);
-            return;
+            return false;
         }
 
         // Emit the changes for off-chain indexers.
@@ -117,6 +120,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         lastPricePerShare = newPPS;
 
         emit PPSUpdated(block.timestamp, oldPPS, newPPS);
+        return true;
     }
 
     /// @notice Update the vault's aggregated underlying balance and price per share
@@ -126,11 +130,17 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         // Guard against multiple external syncs within the same block.
         require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
 
-        _updateBalance(newAggregatedBalance);
+        bool didUpdate = _updateBalance(newAggregatedBalance);
 
         // Update freshness trackers (external syncs reset NAV freshness).
         lastBlockUpdated = block.number;
         lastTimestampUpdated = block.timestamp;
+
+        // If strategy execution triggered a pause, only oracle-confirmed balance update can clear it.
+        if (didUpdate && pendingOracleSyncAfterManageBatch) {
+            pendingOracleSyncAfterManageBatch = false;
+            if (paused()) _unpause();
+        }
     }
 
     function _netTotalAssets(uint256 newAggregatedBalance) internal view returns (uint256) {
@@ -357,65 +367,16 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         return _pendingRedeem[user].assets;
     }
 
-    /// @notice Execute batch operations and infer external balance delta from vault asset balance change
+    /// @notice Execute batch operations and require a subsequent oracle balance sync before user actions resume
     /// @param calls Array of calls to execute
-    /// @dev Uses pre/post vault asset balance to derive how external aggregated balance changed
+    /// @dev Operator executes strategy movement only; oracle remains source of truth for accounting updates
     function manageBatch(Call[] calldata calls) public payable nonReentrant override(VaultBase, IVaultBase) {
-        // Track vault-held asset balance before strategy execution.
-        uint256 beforeBalance = IERC20(asset()).balanceOf(address(this));
-
-        // Execute guarded batch operations.
+        // Execute guarded strategy operations.
         super.manageBatch(calls);
 
-        // Infer external balance delta from how much asset left/returned to the vault.
-        uint256 afterBalance = IERC20(asset()).balanceOf(address(this));
-        if (afterBalance != beforeBalance) {
-            uint256 balanceChange =
-                afterBalance > beforeBalance ? afterBalance - beforeBalance : beforeBalance - afterBalance;
-
-            // If funds returned to vault, external balances must be at least that much.
-            if (afterBalance > beforeBalance) {
-                require(balanceChange <= aggregatedUnderlyingBalances, "Balance change exceeds external balances");
-            }
-
-            uint256 newAggregatedUnderlyingBalances = afterBalance > beforeBalance
-                ? aggregatedUnderlyingBalances - balanceChange
-                : aggregatedUnderlyingBalances + balanceChange;
-
-            _updateBalance(newAggregatedUnderlyingBalances);
-        }
-    }
-
-    /// @notice Execute batch operations and update balance with explicit external delta
-    /// @param calls Array of calls to execute
-    /// @param externalDelta Explicit balance delta to apply (can be positive or negative)
-    /// @dev This function executes the batch calls and then updates the aggregated balance with the provided delta
-    function manageBatchWithDelta(
-        Call[] calldata calls,
-        int256 externalDelta
-    )
-        public
-        payable
-        nonReentrant
-        requiresAuth
-    {
-        // Execute batch operations first (may change external balances).
-        super.manageBatch(calls);
-
-        // Apply explicit external balance delta (positive or negative).
-        uint256 newAggregatedUnderlyingBalances;
-        if (externalDelta >= 0) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances + uint256(externalDelta);
-        } else {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint256 absDelta = uint256(-externalDelta);
-            require(absDelta <= aggregatedUnderlyingBalances, "External delta exceeds balances");
-            newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances - absDelta;
-        }
-
-        // Recompute PPS and apply hook checks.
-        _updateBalance(newAggregatedUnderlyingBalances);
+        // Force pause until oracle/reporter confirms the post-strategy true balance.
+        pendingOracleSyncAfterManageBatch = true;
+        if (!paused()) _pause();
     }
 
     // ========================================= ERC4626 OVERRIDES =========================================
