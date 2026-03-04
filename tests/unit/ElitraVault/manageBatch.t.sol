@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import { ElitraVault_Base_Test } from "./Base.t.sol";
 import { Call } from "../../../src/interfaces/IVaultBase.sol";
 import { AllowAllGuard, BlockAllGuard } from "../../mocks/MockGuards.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 // Mock target contract for testing manageBatch behavior
 contract MockTarget {
@@ -22,6 +23,10 @@ contract MockTarget {
 
     function resetCounter() external {
         counter = 0;
+    }
+
+    function sendToken(address token, address to, uint256 amount) external {
+        IERC20(token).transfer(to, amount);
     }
 }
 

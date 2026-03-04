@@ -178,8 +178,10 @@ contract FeeManagerTest is Test {
         uint256 assets = vault.totalAssets();
         uint256 supply = vault.totalSupply();
         assertEq(assets, depositAmount + profit, "Assets should include profit");
-        assertEq(supply, depositAmount, "Supply unchanged");
-        assertApproxEqRel(vault.convertToAssets(1e6), 1.2e6, 0.01e18, "PPS should reflect profit");
+        assertGt(supply, depositAmount, "Supply should increase due to fee accrual on updateBalance");
+        uint256 ppsAfterFees = vault.convertToAssets(1e6);
+        assertGt(ppsAfterFees, 1e6, "PPS should still increase after profit");
+        assertLt(ppsAfterFees, 1.2e6, "PPS should be diluted by minted fee shares");
     }
 
     function test_PricePerShare_WithLoss_Decreases_Correct() public {
@@ -204,9 +206,12 @@ contract FeeManagerTest is Test {
         vault.updateBalance(320e6); // 400e6 -> 320e6 (20% loss)
 
         // Total assets = 1000 (vault) + 320 (external) = 1320e6
-        // PPS = 1320 / 1000 = 1.32
+        // Without fees PPS = 1320 / 1000 = 1.32, but fee share minting dilutes this.
         assertEq(vault.totalAssets(), 1320e6, "Total assets should reflect loss");
-        assertApproxEqRel(vault.convertToAssets(1e6), 1.32e6, 0.01e18, "PPS should reflect loss");
+        assertGt(vault.totalSupply(), 1000e6, "Supply should increase due to fee accrual on oracle updates");
+        uint256 ppsAfterFees = vault.convertToAssets(1e6);
+        assertGt(ppsAfterFees, 1e6, "PPS should remain above 1.0 after net gain");
+        assertLt(ppsAfterFees, 1.32e6, "PPS should be diluted relative to no-fee baseline");
     }
 
     // ========================================================================

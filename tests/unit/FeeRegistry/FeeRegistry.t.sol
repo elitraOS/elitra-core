@@ -134,7 +134,7 @@ contract FeeRegistryTest is Test {
         feeRegistry.setProtocolFeeRateBpsForVault(vault, customRate);
 
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vault), customRate);
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault));
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.Active));
     }
 
     function test_SetProtocolFeeRateBpsForVault_MaxRate() public {
@@ -144,7 +144,7 @@ contract FeeRegistryTest is Test {
         feeRegistry.setProtocolFeeRateBpsForVault(vault, customRate);
 
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vault), customRate);
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault));
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.Active));
     }
 
     function test_SetProtocolFeeRateBpsForVault_RevertsWhen_ZeroVault() public {
@@ -187,7 +187,7 @@ contract FeeRegistryTest is Test {
         feeRegistry.setProtocolFeeRateBpsForVault(vault, newRate);
 
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vault), newRate);
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault));
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.Active));
     }
 
     function test_SetProtocolFeeRateBpsForVault_MultipleVaults() public {
@@ -204,8 +204,8 @@ contract FeeRegistryTest is Test {
 
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vault1), rate1);
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vault2), rate2);
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault1));
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault2));
+        assertEq(uint8(feeRegistry.vaultRateState(vault1)), uint8(FeeRegistry.VaultRateState.Active));
+        assertEq(uint8(feeRegistry.vaultRateState(vault2)), uint8(FeeRegistry.VaultRateState.Active));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -219,7 +219,7 @@ contract FeeRegistryTest is Test {
         vm.prank(owner);
         feeRegistry.setProtocolFeeRateBpsForVault(vault, customRate);
 
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault));
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.Active));
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vault), customRate);
 
         // Clear custom rate
@@ -230,7 +230,7 @@ contract FeeRegistryTest is Test {
         feeRegistry.clearProtocolFeeRateBpsForVault(vault);
 
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vault), 0);
-        assertFalse(feeRegistry.hasCustomProtocolRate(vault));
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.None));
     }
 
     function test_ClearProtocolFeeRateBpsForVault_RevertsWhen_ZeroVault() public {
@@ -245,15 +245,11 @@ contract FeeRegistryTest is Test {
         feeRegistry.clearProtocolFeeRateBpsForVault(vault);
     }
 
-    function test_ClearProtocolFeeRateBpsForVault_NoOpWhenNoCustomRate() public {
-        // Clear without setting - should still emit event with oldRate = 0
-        vm.expectEmit(true, true, true, true);
-        emit FeeRegistry.ProtocolFeeRateForVaultUpdated(vault, 0, 0);
-
+    function test_ClearProtocolFeeRateBpsForVault_RevertsWhen_NoCustomRate() public {
+        // Clear without setting - should revert
+        vm.expectRevert("no custom rate");
         vm.prank(owner);
         feeRegistry.clearProtocolFeeRateBpsForVault(vault);
-
-        assertFalse(feeRegistry.hasCustomProtocolRate(vault));
     }
 
     function test_ClearProtocolFeeRateBpsForVault_DoesNotAffectOtherVaults() public {
@@ -272,8 +268,8 @@ contract FeeRegistryTest is Test {
         vm.prank(owner);
         feeRegistry.clearProtocolFeeRateBpsForVault(vault1);
 
-        assertFalse(feeRegistry.hasCustomProtocolRate(vault1));
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault2));
+        assertEq(uint8(feeRegistry.vaultRateState(vault1)), uint8(FeeRegistry.VaultRateState.None));
+        assertEq(uint8(feeRegistry.vaultRateState(vault2)), uint8(FeeRegistry.VaultRateState.Active));
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vault2), rate2);
     }
 
@@ -494,7 +490,7 @@ contract FeeRegistryTest is Test {
         feeRegistry.setProtocolFeeRateBpsForVault(vaultAddr, newRate);
 
         assertEq(feeRegistry.protocolFeeRateBpsByVault(vaultAddr), newRate);
-        assertTrue(feeRegistry.hasCustomProtocolRate(vaultAddr));
+        assertEq(uint8(feeRegistry.vaultRateState(vaultAddr)), uint8(FeeRegistry.VaultRateState.Active));
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -511,17 +507,17 @@ contract FeeRegistryTest is Test {
     }
 
     function test_View_HasCustomProtocolRate() public {
-        assertFalse(feeRegistry.hasCustomProtocolRate(vault));
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.None));
 
         vm.prank(owner);
         feeRegistry.setProtocolFeeRateBpsForVault(vault, 500);
 
-        assertTrue(feeRegistry.hasCustomProtocolRate(vault));
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.Active));
 
         vm.prank(owner);
         feeRegistry.clearProtocolFeeRateBpsForVault(vault);
 
-        assertFalse(feeRegistry.hasCustomProtocolRate(vault));
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.None));
     }
 
     function test_View_ProtocolFeeReceiver() public {
@@ -532,6 +528,76 @@ contract FeeRegistryTest is Test {
         feeRegistry.setProtocolFeeReceiver(newReceiver);
 
         assertEq(feeRegistry.protocolFeeReceiver(), newReceiver);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          COOLDOWN BEHAVIOR
+    //////////////////////////////////////////////////////////////*/
+
+    function test_Cooldown_GlobalRateUpdate_AppliesAfterDelay() public {
+        vm.prank(owner);
+        feeRegistry.setProtocolFeeRateCooldown(1 days);
+
+        vm.prank(owner);
+        feeRegistry.setProtocolFeeRateBps(500);
+
+        // Still old value until cooldown elapses.
+        assertEq(feeRegistry.protocolFeeRateBpsGlobal(), 0);
+        assertEq(feeRegistry.protocolFeeRateBps(), 0);
+
+        vm.warp(block.timestamp + 1 days);
+        assertEq(feeRegistry.protocolFeeRateBps(), 500);
+    }
+
+    function test_Cooldown_CustomRateUpdate_AppliesAfterDelay() public {
+        vm.prank(owner);
+        feeRegistry.setProtocolFeeRateBps(300);
+
+        vm.prank(owner);
+        feeRegistry.setProtocolFeeRateCooldown(1 days);
+
+        vm.prank(owner);
+        feeRegistry.setProtocolFeeRateBpsForVault(vault, 1200);
+
+        // FIX: Vault's current rate is now initialized to global rate (300), preventing 0-rate gap
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.Active));
+        assertEq(feeRegistry.protocolFeeRateBpsByVault(vault), 300);
+        assertEq(feeRegistry.protocolFeeRateBps(vault), 300);
+
+        vm.warp(block.timestamp + 1 days);
+        assertEq(feeRegistry.protocolFeeRateBps(vault), 1200);
+    }
+
+    function test_Cooldown_ClearCustomRate_AppliesAfterDelay() public {
+        vm.prank(owner);
+        feeRegistry.setProtocolFeeRateBps(400);
+
+        vm.prank(owner);
+        feeRegistry.setProtocolFeeRateBpsForVault(vault, 1300);
+        assertEq(feeRegistry.protocolFeeRateBps(vault), 1300);
+
+        vm.prank(owner);
+        feeRegistry.setProtocolFeeRateCooldown(1 days);
+
+        vm.prank(owner);
+        feeRegistry.clearProtocolFeeRateBpsForVault(vault);
+
+        // FIX: Clear now respects cooldown — vault stays in PendingClear state during cooldown
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.PendingClear));
+        assertEq(feeRegistry.protocolFeeRateBps(vault), 1300); // Still custom rate during cooldown
+
+        (bool isPending, uint256 applyTimestamp) = feeRegistry.isProtocolRateClearPending(vault);
+        assertTrue(isPending);
+        assertEq(applyTimestamp, block.timestamp + 1 days);
+
+        vm.warp(block.timestamp + 1 days);
+
+        // Call syncVault to execute the pending clear (view functions don't modify state)
+        feeRegistry.syncVault(vault);
+
+        // After cooldown and sync, vault falls back to global rate
+        assertEq(uint8(feeRegistry.vaultRateState(vault)), uint8(FeeRegistry.VaultRateState.None));
+        assertEq(feeRegistry.protocolFeeRateBps(vault), 400);
     }
 
     /*//////////////////////////////////////////////////////////////

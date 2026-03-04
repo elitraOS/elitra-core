@@ -45,7 +45,7 @@ contract TokenGuard is ITransactionGuard, Ownable {
     /**
      * @notice Validates a transaction against the guard's rules
      * @inheritdoc ITransactionGuard
-     * @dev Only allows approve() calls to whitelisted spenders
+     * @dev Allows approve(spender, 0) for revocation, otherwise only to whitelisted spenders
      * @return True if the transaction is allowed, false otherwise
      */
     function validate(address, bytes calldata data, uint256) external view override returns (bool) {
@@ -55,7 +55,9 @@ contract TokenGuard is ITransactionGuard, Ownable {
         if (sig == APPROVE_SELECTOR) {
             // Decode the spender from calldata (first argument after selector)
             address spender = abi.decode(data[4:36], (address));
-            return whitelistedSpenders[spender];
+            // Always allow allowance revocation even if spender is no longer whitelisted.
+            uint256 amount = abi.decode(data[36:68], (uint256));
+            return amount == 0 || whitelistedSpenders[spender];
         }
 
         return false;
