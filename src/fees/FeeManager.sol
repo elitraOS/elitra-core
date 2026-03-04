@@ -446,7 +446,7 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         uint256 assetsAfterFees = assetsUnderMgmt - totalFeesAssets;
         uint256 totalSharesToMint = totalFeesAssets.mulDiv(
             totalSupply() + 10 ** _decimalsOffset(),
-            assetsAfterFees,
+            assetsAfterFees + 1,
             MathUpgradeable.Rounding.Up
         );
 
