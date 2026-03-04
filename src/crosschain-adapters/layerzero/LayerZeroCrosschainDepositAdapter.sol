@@ -116,6 +116,7 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
 
         // Decode the OFT compose message using LayerZero's codec.
         uint32 srcEid = OFTComposeMsgCodec.srcEid(_message);
+        address user = OFTComposeMsgCodec.bytes32ToAddress(OFTComposeMsgCodec.composeFrom(_message));
         bytes memory composeMsg = OFTComposeMsgCodec.composeMsg(_message);
 
         // Get the underlying token address from the OFT mapping.
@@ -136,7 +137,7 @@ contract LayerZeroCrosschainDepositAdapter is BaseCrosschainDepositAdapter, IOAp
 
         // Execute the vault deposit using base adapter logic.
         // srcEid serves as the source identifier for tracking.
-        _processReceivedFunds(_from, srcEid, token, amountIn, nativeAmount, _guid, composeMsg);
+        _processReceivedFunds(user, srcEid, token, amountIn, nativeAmount, _guid, composeMsg);
     }
 
     // ================== ADMIN FUNCTIONS ==================
