@@ -359,6 +359,107 @@ contract BaseCrosschainDepositAdapter_Test is Test {
         ICrosschainDepositAdapter.DepositRecord memory record = localAdapter.getDepositRecord(0);
         assertEq(uint8(record.status), uint8(ICrosschainDepositAdapter.DepositStatus.Queued));
     }
+
+    function test_ProcessReceivedFunds_FailureQueuesNativeRefundWhenReceiverRejectsEth() public {
+        MockRevertingZapExecutor zap = new MockRevertingZapExecutor();
+        MockVaultPPS mockVault = new MockVaultPPS(address(token));
+        RejectingReceiver receiver = new RejectingReceiver();
+
+        MockAdapter localAdapter = new MockAdapter();
+        localAdapter.initialize(owner, address(0), address(zap));
+
+        vm.prank(owner);
+        localAdapter.setSupportedVault(address(mockVault), true);
+
+        vm.deal(address(localAdapter), 1 ether);
+        token.mint(address(localAdapter), 100e18);
+
+        Call[] memory zapCalls = new Call[](1);
+        zapCalls[0] = Call({ target: address(this), value: 0, data: "" });
+        bytes memory payload = abi.encode(address(mockVault), address(receiver), 0, zapCalls);
+
+        localAdapter.exposedProcessReceivedFunds(
+            address(receiver), 1, address(token), 100e18, 1 ether, bytes32(uint256(1)), payload
+        );
+
+        assertEq(token.balanceOf(address(receiver)), 100e18);
+        assertEq(localAdapter.pendingNativeRefunds(address(receiver)), 1 ether);
+        assertEq(address(localAdapter).balance, 1 ether);
+    }
+
+    function test_ClaimNativeRefund_SuccessAfterReceiverAllowsEth() public {
+        MockRevertingZapExecutor zap = new MockRevertingZapExecutor();
+        MockVaultPPS mockVault = new MockVaultPPS(address(token));
+        ToggleReceiver receiver = new ToggleReceiver();
+
+        MockAdapter localAdapter = new MockAdapter();
+        localAdapter.initialize(owner, address(0), address(zap));
+
+        vm.prank(owner);
+        localAdapter.setSupportedVault(address(mockVault), true);
+
+        vm.deal(address(localAdapter), 1 ether);
+        token.mint(address(localAdapter), 100e18);
+
+        Call[] memory zapCalls = new Call[](1);
+        zapCalls[0] = Call({ target: address(this), value: 0, data: "" });
+        bytes memory payload = abi.encode(address(mockVault), address(receiver), 0, zapCalls);
+
+        localAdapter.exposedProcessReceivedFunds(
+            address(receiver), 1, address(token), 100e18, 1 ether, bytes32(uint256(1)), payload
+        );
+
+        assertEq(localAdapter.pendingNativeRefunds(address(receiver)), 1 ether);
+
+        receiver.setAcceptNative(true);
+        vm.prank(address(receiver));
+        localAdapter.claimNativeRefund(address(receiver), payable(address(receiver)));
+
+        assertEq(localAdapter.pendingNativeRefunds(address(receiver)), 0);
+        assertEq(address(receiver).balance, 1 ether);
+        assertEq(address(localAdapter).balance, 0);
+    }
+
+    function test_ClaimNativeRefund_OwnerCanClaimForUserToCustomRecipient() public {
+        MockRevertingZapExecutor zap = new MockRevertingZapExecutor();
+        MockVaultPPS mockVault = new MockVaultPPS(address(token));
+        RejectingReceiver receiver = new RejectingReceiver();
+        address payable recipient = payable(makeAddr("recipient"));
+
+        MockAdapter localAdapter = new MockAdapter();
+        localAdapter.initialize(owner, address(0), address(zap));
+
+        vm.prank(owner);
+        localAdapter.setSupportedVault(address(mockVault), true);
+
+        vm.deal(address(localAdapter), 1 ether);
+        token.mint(address(localAdapter), 100e18);
+
+        Call[] memory zapCalls = new Call[](1);
+        zapCalls[0] = Call({ target: address(this), value: 0, data: "" });
+        bytes memory payload = abi.encode(address(mockVault), address(receiver), 0, zapCalls);
+
+        localAdapter.exposedProcessReceivedFunds(
+            address(receiver), 1, address(token), 100e18, 1 ether, bytes32(uint256(1)), payload
+        );
+
+        assertEq(localAdapter.pendingNativeRefunds(address(receiver)), 1 ether);
+
+        vm.prank(owner);
+        localAdapter.claimNativeRefund(address(receiver), recipient);
+
+        assertEq(localAdapter.pendingNativeRefunds(address(receiver)), 0);
+        assertEq(recipient.balance, 1 ether);
+    }
+
+    function test_ClaimNativeRefund_RevertsWhenUnauthorized() public {
+        MockAdapter localAdapter = new MockAdapter();
+        localAdapter.initialize(owner, address(0), zapExecutor);
+
+        vm.expectRevert("Not authorized");
+        vm.prank(user);
+        localAdapter.claimNativeRefund(makeAddr("someoneElse"), payable(user));
+    }
 }
 
 contract MockZapExecutor {
@@ -425,5 +526,23 @@ contract MockQueueCapture {
         lastToken = token;
         lastAmount = amount;
         lastNativeAmount = nativeAmount;
+    }
+}
+
+contract RejectingReceiver {
+    receive() external payable {
+        revert("no eth");
+    }
+}
+
+contract ToggleReceiver {
+    bool public acceptNative;
+
+    function setAcceptNative(bool value) external {
+        acceptNative = value;
+    }
+
+    receive() external payable {
+        require(acceptNative, "no eth");
     }
 }

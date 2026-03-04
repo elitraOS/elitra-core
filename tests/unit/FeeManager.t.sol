@@ -281,6 +281,23 @@ contract FeeManagerTest is Test {
         assertEq(vault.balanceOf(feeReceiver), 0, "Fee receiver should have no shares");
     }
 
+    function test_ManagementFee_RevertsWhenAccruedFeesConsumeAllAum() public {
+        uint256 depositAmount = 1000e6;
+        asset.mint(alice, depositAmount);
+        vm.startPrank(alice);
+        asset.approve(address(vault), depositAmount);
+        vault.deposit(depositAmount, alice);
+        vm.stopPrank();
+
+        // Use max management rate and a very long accrual window to push fees >= AUM.
+        vault.updateFeeRates(MAX_MANAGEMENT_RATE, 0);
+        skip(DEFAULT_COOLDOWN);
+        skip(11 * 365 days);
+
+        vm.expectRevert(FeeManager.FeeAssetsExceedAum.selector);
+        vault.takeFees();
+    }
+
     // ========================================================================
     //                          PERFORMANCE FEE TESTS
     // ========================================================================

@@ -49,6 +49,7 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
 
     error AboveMaxRate(uint256 max);
     error ZeroAddress();
+    error FeeAssetsExceedAum();
 
     event HighWaterMarkUpdated(uint256 oldHighWaterMark, uint256 newHighWaterMark);
     event RatesUpdated(Rates oldRates, Rates newRates, uint256 applyTimestamp);
@@ -439,6 +440,7 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         // Aggregate fees in asset units.
         uint256 totalFeesAssets = managementFees + performanceFees;
         if (totalFeesAssets == 0) return (0, 0);
+        if (totalFeesAssets >= assetsUnderMgmt) revert FeeAssetsExceedAum();
 
         // Solve for share mint amount x:
         // x / (totalSupply + x) = totalFeesAssets / assetsUnderMgmt
@@ -446,7 +448,7 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         uint256 assetsAfterFees = assetsUnderMgmt - totalFeesAssets;
         uint256 totalSharesToMint = totalFeesAssets.mulDiv(
             totalSupply() + 10 ** _decimalsOffset(),
-            assetsAfterFees + 1,
+            assetsAfterFees,
             MathUpgradeable.Rounding.Up
         );
 

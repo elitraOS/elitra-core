@@ -49,6 +49,8 @@ abstract contract BaseCrosschainDepositAdapter is
     address public depositQueue;
     // Optional zap executor for swap + deposit flows.
     ZapExecutor public zapExecutor;
+    // Native refunds that could not be pushed to users.
+    mapping(address => uint256) public pendingNativeRefunds;
 
     // ================== ERRORS ==================
 
@@ -60,6 +62,9 @@ abstract contract BaseCrosschainDepositAdapter is
     error NativeTransferFailed();
 
     // ================== INIT ==================
+
+    event NativeRefundQueued(address indexed user, uint256 amount);
+    event NativeRefundClaimed(address indexed user, uint256 amount);
 
     function __BaseAdapter_init(address _owner, address _queue, address _zapExecutor) internal onlyInitializing {
         // Initialize upgradeable mixins.
@@ -306,8 +311,31 @@ abstract contract BaseCrosschainDepositAdapter is
         }
         if (nativeAmount > 0) {
             (bool ok, ) = payable(user).call{value: nativeAmount}("");
-            if (!ok) revert NativeTransferFailed();
+            if (!ok) {
+                pendingNativeRefunds[user] += nativeAmount;
+                emit NativeRefundQueued(user, nativeAmount);
+            }
         }
+    }
+
+    /// @notice Claim native refunds that could not be pushed during failure handling
+    /// @param user User whose pending native refund will be claimed
+    /// @param recipient Recipient of claimed native refund
+    function claimNativeRefund(address user, address payable recipient) external nonReentrant {
+        require(msg.sender == user || msg.sender == owner(), "Not authorized");
+        require(recipient != address(0), "Invalid recipient");
+
+        uint256 refund = pendingNativeRefunds[user];
+        if (refund == 0) revert NativeTransferFailed();
+
+        pendingNativeRefunds[user] = 0;
+        (bool ok, ) = recipient.call{value: refund}("");
+        if (!ok) {
+            pendingNativeRefunds[user] = refund;
+            revert NativeTransferFailed();
+        }
+
+        emit NativeRefundClaimed(user, refund);
     }
 
     // ================== ADMIN ==================
