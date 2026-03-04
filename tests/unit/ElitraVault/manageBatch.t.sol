@@ -2,12 +2,11 @@
 pragma solidity 0.8.28;
 
 import { ElitraVault_Base_Test } from "./Base.t.sol";
-import { Call } from "../../../src/interfaces/IElitraVault.sol";
+import { Call } from "../../../src/interfaces/IVaultBase.sol";
 import { AllowAllGuard, BlockAllGuard } from "../../mocks/MockGuards.sol";
-import { Errors } from "../../../src/libraries/Errors.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-// Mock target contract for testing manageBatchWithDelta
+// Mock target contract for testing manageBatch behavior
 contract MockTarget {
     uint256 public counter;
     uint256 public lastValue;
@@ -31,7 +30,7 @@ contract MockTarget {
     }
 }
 
-contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
+contract ManageBatch_Test is ElitraVault_Base_Test {
     MockTarget public target1;
     MockTarget public target2;
     AllowAllGuard public allowAllGuard;
@@ -52,20 +51,7 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         vm.stopPrank();
     }
 
-    function test_ManageBatch_RevertsWithUseManageBatchWithDelta() public {
-        Call[] memory calls = new Call[](1);
-        calls[0] = Call({
-            target: address(target1),
-            data: abi.encodeWithSelector(MockTarget.increment.selector),
-            value: 0
-        });
-
-        vm.prank(owner);
-        vm.expectRevert(Errors.UseManageBatchWithDelta.selector);
-        vault.manageBatch(calls);
-    }
-
-    function test_ManageBatchWithDelta_ExecutesMultipleOperations() public {
+    function test_ManageBatch_ExecutesMultipleOperations_AndPausesVault() public {
         // Prepare batch operations
         Call[] memory calls = new Call[](3);
 
@@ -90,24 +76,26 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
             value: 0
         });
 
-        // Execute batch as owner with no external delta (operations don't affect vault asset balance)
+        // Execute batch as owner.
         vm.prank(owner);
-        vault.manageBatchWithDelta(calls, 0);
+        vault.manageBatch(calls);
 
         // Verify operations were executed
         assertEq(target1.counter(), 6); // 1 + 5
         assertEq(target2.counter(), 1);
+        assertTrue(vault.paused());
+        assertTrue(vault.pendingOracleSyncAfterManageBatch());
     }
 
-    function test_ManageBatchWithDelta_RevertsOnEmptyCalls() public {
+    function test_ManageBatch_RevertsOnEmptyCalls() public {
         Call[] memory calls = new Call[](0);
 
         vm.prank(owner);
         vm.expectRevert("No calls provided");
-        vault.manageBatchWithDelta(calls, 0);
+        vault.manageBatch(calls);
     }
 
-    function test_ManageBatchWithDelta_RevertsWhenUnauthorized() public {
+    function test_ManageBatch_RevertsWhenUnauthorized() public {
         Call[] memory calls = new Call[](1);
 
         calls[0] = Call({
@@ -120,10 +108,10 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
 
         vm.prank(unauthorized);
         vm.expectRevert(); // Should revert due to requiresAuth
-        vault.manageBatchWithDelta(calls, 0);
+        vault.manageBatch(calls);
     }
 
-    function test_ManageBatchWithDelta_HandlesValueTransfers() public {
+    function test_ManageBatch_HandlesValueTransfers() public {
         // Fund the vault with ETH
         vm.deal(address(vault), 1 ether);
 
@@ -142,14 +130,15 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
         });
 
         vm.prank(owner);
-        vault.manageBatchWithDelta(calls, 0);
+        vault.manageBatch(calls);
 
         // Verify ETH was transferred
         assertEq(target1.lastValue(), 0.1 ether);
         assertEq(target2.lastValue(), 0.2 ether);
+        assertTrue(vault.paused());
     }
 
-    function test_ManageBatchWithDelta_RevertsWithBlockAllGuard() public {
+    function test_ManageBatch_RevertsWithBlockAllGuard() public {
         // Create a new target with BlockAllGuard
         MockTarget target3 = new MockTarget();
 
@@ -165,11 +154,13 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
 
         vm.prank(owner);
         vm.expectRevert(); // Should revert due to guard validation failure
-        vault.manageBatchWithDelta(calls, 0);
+        vault.manageBatch(calls);
     }
 
-    function test_ManageBatchWithDelta_PositiveExternalDelta() public {
-        uint256 initialBalance = vault.aggregatedUnderlyingBalances();
+    function test_ManageBatch_DoesNotMutateAggregatedBalance() public {
+        uint256 initialBalance = 1000e6;
+        vm.prank(owner);
+        vault.updateBalance(initialBalance);
 
         Call[] memory calls = new Call[](1);
         calls[0] = Call({
@@ -178,62 +169,16 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
             value: 0
         });
 
-        // Simulate an external increase in vault assets (e.g., yield accrued)
-        uint256 positiveDelta = 100e6; // 100 USDC
-
         vm.prank(owner);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        vault.manageBatchWithDelta(calls, int256(positiveDelta));
+        vault.manageBatch(calls);
 
-        // Verify aggregated balance increased
-        assertEq(vault.aggregatedUnderlyingBalances(), initialBalance + positiveDelta);
+        // Strategy execution does not update accounting. Oracle must call updateBalance.
+        assertEq(vault.aggregatedUnderlyingBalances(), initialBalance);
+        assertTrue(vault.pendingOracleSyncAfterManageBatch());
     }
 
-    function test_ManageBatchWithDelta_NegativeExternalDelta() public {
-        // First set up the vault with some assets
+    function test_UpdateBalance_AfterManageBatch_UnpausesAndClearsSyncFlag() public {
         uint256 initialBalance = 1000e6; // 1000 USDC
-        deal(address(asset), address(this), initialBalance);
-        asset.approve(address(vault), initialBalance);
-        vault.deposit(initialBalance, address(this));
-
-        // Update the aggregated balance to reflect the deposited assets
-        vm.prank(owner);
-        vault.updateBalance(initialBalance);
-
-        uint256 balanceAfterUpdate = vault.aggregatedUnderlyingBalances();
-        assertEq(balanceAfterUpdate, initialBalance);
-
-        // Increase the max percentage change threshold to allow larger decreases
-        vm.prank(owner);
-        balanceUpdateHook.updateMaxPercentage(0.1e18); // 10%
-
-        Call[] memory calls = new Call[](1);
-        calls[0] = Call({
-            target: address(target1),
-            data: abi.encodeWithSelector(MockTarget.increment.selector),
-            value: 0
-        });
-
-        // Simulate an external decrease in vault assets (e.g., loss, fee)
-        uint256 negativeDelta = 50e6; // 50 USDC (5% decrease)
-
-        vm.roll(block.number + 1);
-        vm.prank(owner);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        vault.manageBatchWithDelta(calls, -int256(negativeDelta));
-
-        // Verify aggregated balance decreased
-        assertEq(vault.aggregatedUnderlyingBalances(), balanceAfterUpdate - negativeDelta);
-    }
-
-    function test_ManageBatchWithDelta_NegativeDeltaExceedsBalance() public {
-        // First set up the vault with some assets
-        uint256 initialBalance = 100e6; // 100 USDC
-        deal(address(asset), address(this), initialBalance);
-        asset.approve(address(vault), initialBalance);
-        vault.deposit(initialBalance, address(this));
-
-        // Update the aggregated balance to reflect the deposited assets
         vm.prank(owner);
         vault.updateBalance(initialBalance);
 
@@ -244,51 +189,18 @@ contract ManageBatchWithDelta_Test is ElitraVault_Base_Test {
             value: 0
         });
 
-        // Try to decrease more than available balance
-        uint256 negativeDelta = 200e6; // 200 USDC (more than 100 USDC balance)
+        vm.prank(owner);
+        vault.manageBatch(calls);
 
+        assertTrue(vault.paused());
+        assertTrue(vault.pendingOracleSyncAfterManageBatch());
+
+        // updateBalance requires next block
         vm.roll(block.number + 1);
         vm.prank(owner);
-        vm.expectRevert("External delta exceeds balances");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        vault.manageBatchWithDelta(calls, -int256(negativeDelta));
-    }
+        vault.updateBalance(initialBalance);
 
-    function test_ManageBatchWithDelta_DoesNotDoubleCountFeesOnExternalWithdrawal() public {
-        uint256 depositAmount = 1000e6;
-        uint256 withdrawalAmount = 500e6;
-
-        deal(address(asset), address(this), depositAmount);
-        asset.approve(address(vault), depositAmount);
-        vault.deposit(depositAmount, address(this));
-
-        vm.startPrank(owner);
-        vault.setGuard(address(asset), address(allowAllGuard));
-        vault.updateFeeRates(0, 2_000); // 20% performance fee
-
-        // Move all idle assets to "external strategy" (mock target), and mirror this in aggregated balances.
-        Call[] memory deployCalls = new Call[](1);
-        deployCalls[0] = Call({
-            target: address(asset),
-            data: abi.encodeWithSelector(IERC20.transfer.selector, address(target1), depositAmount),
-            value: 0
-        });
-        // forge-lint: disable-next-line(unsafe-typecast)
-        vault.manageBatchWithDelta(deployCalls, int256(depositAmount));
-
-        // Pull part of assets back to idle from target1 and decrease aggregated balances accordingly.
-        Call[] memory withdrawCalls = new Call[](1);
-        withdrawCalls[0] = Call({
-            target: address(target1),
-            data: abi.encodeWithSelector(MockTarget.sendToken.selector, address(asset), address(vault), withdrawalAmount),
-            value: 0
-        });
-        // forge-lint: disable-next-line(unsafe-typecast)
-        vault.manageBatchWithDelta(withdrawCalls, -int256(withdrawalAmount));
-        vm.stopPrank();
-
-        // Total assets remained flat, so no performance fee shares should be minted.
-        assertEq(vault.totalAssets(), depositAmount);
-        assertEq(vault.balanceOf(owner), 0);
+        assertFalse(vault.paused());
+        assertFalse(vault.pendingOracleSyncAfterManageBatch());
     }
 }

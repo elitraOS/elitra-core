@@ -2,8 +2,9 @@
 pragma solidity 0.8.28;
 
 import { Errors } from "./libraries/Errors.sol";
-import { IElitraVault, Call } from "./interfaces/IElitraVault.sol";
+import { IElitraVault } from "./interfaces/IElitraVault.sol";
 import { IVaultBase } from "./interfaces/IVaultBase.sol";
+import { Call } from "./interfaces/IVaultBase.sol";
 import { IBalanceUpdateHook } from "./interfaces/IBalanceUpdateHook.sol";
 import { IRedemptionHook, RedemptionMode } from "./interfaces/IRedemptionHook.sol";
 
@@ -43,6 +44,8 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
     uint256 public navFreshnessThreshold;
     // Timestamp of last NAV update.
     uint256 public lastTimestampUpdated;
+    // Whether strategy execution has paused the vault pending oracle sync.
+    bool public pendingOracleSyncAfterManageBatch;
 
     // Redemption state
     // Hook that decides redemption mode and amount.
@@ -96,7 +99,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
 
     /// @notice Internal function to update vault balance and price per share
     /// @param newAggregatedBalance The new aggregated balance from external protocols
-    function _updateBalance(uint256 newAggregatedBalance) internal {
+    function _updateBalance(uint256 newAggregatedBalance) internal returns (bool didUpdate) {
         uint256 newPPS = _calculatePPS(totalSupply(), _netTotalAssets(newAggregatedBalance));
 
         // 1. Pull validation from balance update hook (read-only).
@@ -106,7 +109,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         if (!shouldContinue) {
             _pause();
             emit VaultPausedDueToThreshold(block.timestamp, lastPricePerShare, newPPS);
-            return;
+            return false;
         }
 
         // Emit the changes for off-chain indexers.
@@ -118,6 +121,7 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         lastPricePerShare = newPPS;
 
         emit PPSUpdated(block.timestamp, oldPPS, newPPS);
+        return true;
     }
 
     /// @notice Update the vault's aggregated underlying balance and price per share
@@ -129,12 +133,17 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
 
         // Accrue fees before applying balance sync changes.
         _takeFees();
-
-        _updateBalance(newAggregatedBalance);
+        bool didUpdate = _updateBalance(newAggregatedBalance);
 
         // Update freshness trackers (external syncs reset NAV freshness).
         lastBlockUpdated = block.number;
         lastTimestampUpdated = block.timestamp;
+
+        // If strategy execution triggered a pause, only oracle-confirmed balance update can clear it.
+        if (didUpdate && pendingOracleSyncAfterManageBatch) {
+            pendingOracleSyncAfterManageBatch = false;
+            if (paused()) _unpause();
+        }
     }
 
     function _netTotalAssets(uint256 newAggregatedBalance) internal view returns (uint256) {
@@ -363,52 +372,18 @@ contract ElitraVault is ERC4626Upgradeable, VaultBase, FeeManager, ReentrancyGua
         return _pendingRedeem[user].assets;
     }
 
-    /// @notice Batch management is disabled - use manageBatchWithDelta instead
-    /// @dev This function always reverts to prevent accidental use of the base manageBatch function
-    function manageBatch(Call[] calldata) public payable override(VaultBase, IVaultBase) {
-        // Disallow base batch to ensure externalDelta is always provided.
-        revert Errors.UseManageBatchWithDelta();
-    }
-
-    /// @notice Execute batch operations and update balance with explicit external delta
+    /// @notice Execute batch operations and require a subsequent oracle balance sync before user actions resume
     /// @param calls Array of calls to execute
-    /// @param externalDelta Explicit balance delta to apply (can be positive or negative)
-    /// @dev This function executes the batch calls and then updates the aggregated balance with the provided delta
-    function manageBatchWithDelta(
-        Call[] calldata calls,
-        int256 externalDelta
-    )
-        public
-        payable
-        requiresAuth
-        nonReentrant
-    {
-        // Accrue fees before batch execution changes idle/external balances.
-        _takeFees();
-        // Preserve one-update-per-block invariant for operator-driven balance syncs too.
-        require(block.number > lastBlockUpdated, Errors.UpdateAlreadyCompletedInThisBlock());
-
-        // Execute batch operations first (may change external balances).
+    /// @dev Operator executes strategy movement only; oracle remains source of truth for accounting updates
+    function manageBatch(Call[] calldata calls) public payable nonReentrant override(VaultBase, IVaultBase) {
+        // Accrue fees before strategy operations, and align cached PPS baseline after fee dilution.
+        _takeFeesAndSyncPPS();
+        // Execute guarded strategy operations.
         super.manageBatch(calls);
 
-        // Apply explicit external balance delta (positive or negative).
-        uint256 newAggregatedUnderlyingBalances;
-        if (externalDelta >= 0) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances + uint256(externalDelta);
-        } else {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint256 absDelta = uint256(-externalDelta);
-            require(absDelta <= aggregatedUnderlyingBalances, "External delta exceeds balances");
-            newAggregatedUnderlyingBalances = aggregatedUnderlyingBalances - absDelta;
-        }
-
-        // Recompute PPS and apply hook checks.
-        _updateBalance(newAggregatedUnderlyingBalances);
-
-        // Operator syncs refresh block/timestamp guards exactly like oracle syncs.
-        lastBlockUpdated = block.number;
-        lastTimestampUpdated = block.timestamp;
+        // Force pause until oracle/reporter confirms the post-strategy true balance.
+        pendingOracleSyncAfterManageBatch = true;
+        if (!paused()) _pause();
     }
 
     // ========================================= ERC4626 OVERRIDES =========================================

@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import { Script } from "forge-std/Script.sol";
 import { console } from "forge-std/console.sol";
-import { Call } from "../../src/interfaces/IElitraVault.sol";
+import { Call } from "../../src/interfaces/IVaultBase.sol";
 
 /**
  * @notice LayerZero V2 SendParam struct
