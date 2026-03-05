@@ -49,7 +49,6 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
 
     error AboveMaxRate(uint256 max);
     error ZeroAddress();
-    error FeeAssetsExceedAum();
 
     event HighWaterMarkUpdated(uint256 oldHighWaterMark, uint256 newHighWaterMark);
     event RatesUpdated(Rates oldRates, Rates newRates, uint256 applyTimestamp);
