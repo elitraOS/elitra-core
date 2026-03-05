@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import { Test } from "forge-std/Test.sol";
 import { LayerZeroCrosschainDepositAdapter } from "../../src/crosschain-adapters/layerzero/LayerZeroCrosschainDepositAdapter.sol";
+import { ICrosschainDepositAdapter } from "../../src/interfaces/ICrosschainDepositAdapter.sol";
 import { ERC20Mock } from "../mocks/ERC20Mock.sol";
 import { Call } from "../../src/interfaces/IVaultBase.sol";
 import { ERC1967Proxy } from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
@@ -243,6 +244,28 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
         assertEq(adapter.totalDeposits(), 1);
     }
 
+    function test_LzCompose_DefaultReceiverUsesComposeFromUser() public {
+        MockVault vault = new MockVault(address(token));
+        address composeUser = makeAddr("composeUser");
+
+        vm.startPrank(owner);
+        adapter.setSupportedOFT(address(token), address(oft), true);
+        adapter.setSupportedVault(address(vault), true);
+        vm.stopPrank();
+
+        deal(address(token), address(adapter), 100e18);
+
+        bytes32 guid = bytes32(uint256(7));
+        bytes memory hookData = abi.encode(address(vault), address(0), 0, new Call[](0));
+        bytes memory message = _encodeComposeMessageWithFrom(12345, 100e18, composeUser, hookData);
+
+        vm.prank(address(endpoint));
+        adapter.lzCompose(address(oft), guid, message, address(0), "");
+
+        ICrosschainDepositAdapter.DepositRecord memory record = adapter.getDepositRecord(0);
+        assertEq(record.user, composeUser);
+    }
+
     // =========================================
     // receive
     // =========================================
@@ -294,6 +317,18 @@ contract LayerZeroCrosschainDepositAdapter_Test is Test {
         // For testing, we use nonce=0 and composeFrom=address(0)
         uint64 nonce = 0;
         bytes32 composeFrom = bytes32(0);
+        bytes memory fullComposeMsg = abi.encodePacked(composeFrom, composeMsg);
+        return abi.encodePacked(nonce, srcEid, amountLD, fullComposeMsg);
+    }
+
+    function _encodeComposeMessageWithFrom(
+        uint32 srcEid,
+        uint256 amountLD,
+        address composeFromAddress,
+        bytes memory composeMsg
+    ) internal pure returns (bytes memory) {
+        uint64 nonce = 0;
+        bytes32 composeFrom = bytes32(uint256(uint160(composeFromAddress)));
         bytes memory fullComposeMsg = abi.encodePacked(composeFrom, composeMsg);
         return abi.encodePacked(nonce, srcEid, amountLD, fullComposeMsg);
     }

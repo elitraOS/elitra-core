@@ -419,8 +419,9 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
 
         // Price-per-share after accounting for management fees (dilution-aware)
         // PPS after deducting management fees (dilution-aware).
+        uint256 assetsAfterMgmt = assetsUnderMgmt > managementFees ? assetsUnderMgmt - managementFees : 0;
         uint256 pricePerShare = (10 ** decimals()).mulDiv(
-            assetsUnderMgmt + 1 - managementFees,
+            assetsAfterMgmt,
             totalSupply() + 10 ** _decimalsOffset(),
             MathUpgradeable.Rounding.Up
         );
@@ -438,13 +439,19 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         // Aggregate fees in asset units.
         uint256 totalFeesAssets = managementFees + performanceFees;
         if (totalFeesAssets == 0) return (0, 0);
+        // Never allow fee accrual to consume all AUM, otherwise core vault entry points can be blocked.
+        if (totalFeesAssets >= assetsUnderMgmt) {
+            if (assetsUnderMgmt <= 1) return (0, 0);
+            totalFeesAssets = assetsUnderMgmt - 1;
+        }
 
         // Solve for share mint amount x:
         // x / (totalSupply + x) = totalFeesAssets / assetsUnderMgmt
         // => x = totalFeesAssets * (totalSupply + 10**offset) / (assetsUnderMgmt - totalFeesAssets)
+        uint256 assetsAfterFees = assetsUnderMgmt - totalFeesAssets;
         uint256 totalSharesToMint = totalFeesAssets.mulDiv(
             totalSupply() + 10 ** _decimalsOffset(),
-            (assetsUnderMgmt - totalFeesAssets) + 1,
+            assetsAfterFees,
             MathUpgradeable.Rounding.Up
         );
 

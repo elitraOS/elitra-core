@@ -18,6 +18,7 @@ interface ICrosschainDepositQueue {
         uint32 srcEid;
         address token;
         uint256 amount;
+        uint256 nativeAmount;
         address vault;
         address adapter; // The bridge adapter that recorded this failure
         bytes32 guid;
@@ -71,13 +72,14 @@ interface ICrosschainDepositQueue {
         uint32 srcEid,
         address token,
         uint256 amount,
+        uint256 nativeAmount,
         address vault,
         bytes32 guid,
         bytes calldata reason,
         uint256 sharePrice,
         uint256 minSharesOut,
         Call[] calldata zapCalls
-    ) external;
+    ) external payable;
 
     /**
      * @notice Refund a failed deposit to the original user

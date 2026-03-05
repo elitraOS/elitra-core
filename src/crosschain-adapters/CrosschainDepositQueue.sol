@@ -87,15 +87,21 @@ contract CrosschainDepositQueue is
         uint32 srcEid,
         address token,
         uint256 amount,
+        uint256 nativeAmount,
         address vault,
         bytes32 guid,
         bytes calldata reason,
         uint256 sharePrice,
         uint256 minSharesOut,
         Call[] calldata zapCalls
-    ) external override onlyAdapter {
-        // Transfer tokens from adapter to this contract for custody.
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+    ) external payable override onlyAdapter {
+        // Keep native sidecar funds for failed zap retry/refund.
+        require(msg.value == nativeAmount, "Native amount mismatch");
+
+        // Transfer ERC20 tokens from adapter to this contract for custody.
+        if (token != address(0) && amount > 0) {
+            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        }
 
         // Allocate a new failed deposit id.
         uint256 depositId = totalFailedDeposits++;
@@ -105,6 +111,7 @@ contract CrosschainDepositQueue is
             srcEid: srcEid,
             token: token,
             amount: amount,
+            nativeAmount: nativeAmount,
             vault: vault,
             adapter: msg.sender,
             guid: guid,
@@ -143,7 +150,13 @@ contract CrosschainDepositQueue is
         deposit.status = DepositStatus.Resolved;
 
         // Return original tokens to the user.
-        IERC20(deposit.token).safeTransfer(deposit.user, deposit.amount);
+        if (deposit.token != address(0) && deposit.amount > 0) {
+            IERC20(deposit.token).safeTransfer(deposit.user, deposit.amount);
+        }
+        if (deposit.nativeAmount > 0) {
+            (bool ok, ) = payable(deposit.user).call{value: deposit.nativeAmount}("");
+            require(ok, "ETH transfer failed");
+        }
 
         emit DepositResolved(depositId, deposit.user, deposit.token, deposit.amount, false);
     }
@@ -172,7 +185,7 @@ contract CrosschainDepositQueue is
         IElitraVault vault = IElitraVault(deposit.vault);
         address vaultAsset = vault.asset();
 
-        if (deposit.token == vaultAsset) {
+        if (deposit.token == vaultAsset && deposit.nativeAmount == 0) {
             // Direct deposit path (token already matches vault asset).
             IERC20(vaultAsset).forceApprove(address(vault), deposit.amount);
 
@@ -187,9 +200,11 @@ contract CrosschainDepositQueue is
             require(zapExecutor != address(0), "Zap executor not set");
 
             // Approve executor for this amount.
-            IERC20(deposit.token).forceApprove(zapExecutor, deposit.amount);
+            if (deposit.token != address(0) && deposit.amount > 0) {
+                IERC20(deposit.token).forceApprove(zapExecutor, deposit.amount);
+            }
 
-            sharesOut = ZapExecutor(payable(zapExecutor)).executeZapAndDeposit(
+            sharesOut = ZapExecutor(payable(zapExecutor)).executeZapAndDeposit{value: deposit.nativeAmount}(
                 deposit.token,
                 deposit.amount,
                 deposit.vault,
@@ -199,7 +214,9 @@ contract CrosschainDepositQueue is
             );
 
             // Reset approval for defensive safety.
-            IERC20(deposit.token).forceApprove(zapExecutor, 0);
+            if (deposit.token != address(0) && deposit.amount > 0) {
+                IERC20(deposit.token).forceApprove(zapExecutor, 0);
+            }
 
             require(sharesOut >= deposit.minSharesOut, "Shares below minimum");
         }

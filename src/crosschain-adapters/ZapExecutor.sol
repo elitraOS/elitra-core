@@ -24,6 +24,8 @@ contract ZapExecutor {
     error DepositFailedNoShares();
     // Raised when native ETH transfer fails.
     error NativeTransferFailed();
+    // Raised when provided native input does not match expected amount.
+    error InvalidNativeInput();
 
     /// @notice Allow contract to receive native tokens (e.g., from WETH withdrawals)
     /// @dev Required for zap paths that involve native tokens
@@ -48,9 +50,14 @@ contract ZapExecutor {
         uint256 minSharesOut,
         Call[] calldata zapCalls
     ) external payable returns (uint256 shares) {
-        // 1. Pull funds from Adapter.
-        // (Adapter must have approved this contract beforehand.)
-        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        // 1. Pull input funds from Adapter.
+        // tokenIn=address(0) means native ETH input passed via msg.value.
+        if (tokenIn == address(0)) {
+            if (msg.value != amountIn) revert InvalidNativeInput();
+        } else {
+            // Adapter must have approved this contract beforehand.
+            IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        }
 
         // 2. Execute arbitrary zap calls (swaps, unwraps, etc.).
         for (uint256 i = 0; i < zapCalls.length; i++) {
@@ -74,7 +81,9 @@ contract ZapExecutor {
         if (shares == 0) revert DepositFailedNoShares();
 
         // Sweep any leftover tokens/native directly to the receiver
-        _sweepTokenTo(tokenIn, receiver);
+        if (tokenIn != address(0)) {
+            _sweepTokenTo(tokenIn, receiver);
+        }
         _sweepTokenTo(asset, receiver);
         _sweepNativeTo(receiver);
     }

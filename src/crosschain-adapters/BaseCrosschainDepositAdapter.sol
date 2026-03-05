@@ -49,6 +49,8 @@ abstract contract BaseCrosschainDepositAdapter is
     address public depositQueue;
     // Optional zap executor for swap + deposit flows.
     ZapExecutor public zapExecutor;
+    // Native refunds that could not be pushed to users.
+    mapping(address => uint256) public pendingNativeRefunds;
 
     // ================== ERRORS ==================
 
@@ -57,8 +59,12 @@ abstract contract BaseCrosschainDepositAdapter is
     error TokenMismatch();
     error InvalidZapExecutor();
     error SlippageExceeded();
+    error NativeTransferFailed();
 
     // ================== INIT ==================
+
+    event NativeRefundQueued(address indexed user, uint256 amount);
+    event NativeRefundClaimed(address indexed user, uint256 amount);
 
     function __BaseAdapter_init(address _owner, address _queue, address _zapExecutor) internal onlyInitializing {
         // Initialize upgradeable mixins.
@@ -88,7 +94,8 @@ abstract contract BaseCrosschainDepositAdapter is
         address user,
         uint32 sourceId,
         address token,
-        uint256 amount,
+        uint256 amount, 
+        uint256 nativeAmount,
         bytes32 messageId, // guid or messageHash
         bytes memory payload
     ) internal {
@@ -104,16 +111,20 @@ abstract contract BaseCrosschainDepositAdapter is
 
         // 3. Validate vault allowlist before executing deposit.
         if (!supportedVaults[vault]) {
-            _handleDepositFailure(depositId, token, amount, abi.encodeWithSelector(VaultNotSupported.selector), minSharesOut, zapCalls);
+            _handleDepositFailure(
+                depositId, token, amount, nativeAmount, abi.encodeWithSelector(VaultNotSupported.selector), minSharesOut, zapCalls
+            );
             return;
         }
 
         // 4. Execute deposit via external call to enable try/catch.
-        try this.executeStrategy(depositId, vault, receiver, token, amount, minSharesOut, zapCalls) returns (uint256 shares) {
+        try this.executeStrategy{value: nativeAmount}(depositId, vault, receiver, token, amount, minSharesOut, zapCalls) returns (uint256 shares) {
             // Verify shares received meets user's minimum requirement
             if (shares < minSharesOut) {
                 depositRecords[depositId].failureReason = abi.encodeWithSelector(SlippageExceeded.selector);
-                _handleDepositFailure(depositId, token, amount, abi.encodeWithSelector(SlippageExceeded.selector), minSharesOut, zapCalls);
+                _handleDepositFailure(
+                    depositId, token, amount, nativeAmount, abi.encodeWithSelector(SlippageExceeded.selector), minSharesOut, zapCalls
+                );
                 return;
             }
             depositRecords[depositId].sharesReceived = shares;
@@ -121,7 +132,7 @@ abstract contract BaseCrosschainDepositAdapter is
             emit DepositSuccess(depositId, receiver, vault, shares);
         } catch (bytes memory reason) {
             depositRecords[depositId].failureReason = reason;
-            _handleDepositFailure(depositId, token, amount, reason, minSharesOut, zapCalls);
+            _handleDepositFailure(depositId, token, amount, nativeAmount, reason, minSharesOut, zapCalls);
         }
     }
 
@@ -136,6 +147,7 @@ abstract contract BaseCrosschainDepositAdapter is
      * @param zapCalls Array of calls for zap execution (empty for direct deposit)
      * @return shares Amount of vault shares minted
      * @dev This function is called internally via try/catch to handle failures gracefully
+     * @dev Payable to allow forwarding native value to ZapExecutor for zap paths that need native ETH
      */
     function executeStrategy(
         uint256 depositId,
@@ -145,17 +157,19 @@ abstract contract BaseCrosschainDepositAdapter is
         uint256 amount,
         uint256 minSharesOut,
         Call[] calldata zapCalls
-    ) external onlySelf returns (uint256 shares) {
+    ) external payable onlySelf returns (uint256 shares) {
         if (zapCalls.length > 0) {
             // SECURITY: execute arbitrary calls only via ZapExecutor.
             if (address(zapExecutor) == address(0)) revert InvalidZapExecutor();
 
             // Approve ONLY the amount for this specific deposit.
-            IERC20(token).forceApprove(address(zapExecutor), amount);
+            if (token != address(0) && amount > 0) {
+                IERC20(token).forceApprove(address(zapExecutor), amount);
+            }
 
             // Execute swaps and deposit in a sandboxed contract.
             // ZapExecutor enforces minSharesOut after zap + deposit.
-            shares = zapExecutor.executeZapAndDeposit(
+            shares = zapExecutor.executeZapAndDeposit{value: msg.value}(
                 token,
                 amount,
                 vault,
@@ -165,8 +179,10 @@ abstract contract BaseCrosschainDepositAdapter is
             );
 
             // Reset approval to minimize token approval risk.
-            IERC20(token).forceApprove(address(zapExecutor), 0);
-
+            if (token != address(0) && amount > 0) {
+                IERC20(token).forceApprove(address(zapExecutor), 0);
+            }
+            
             emit ZapExecuted(depositId, zapCalls.length, shares);
         } else {
             // Direct deposit path (token must match vault asset).
@@ -223,6 +239,7 @@ abstract contract BaseCrosschainDepositAdapter is
         uint256 depositId,
         address token,
         uint256 amount,
+        uint256 nativeAmount,
         bytes memory reason,
         uint256 minSharesOut,
         Call[] memory zapCalls
@@ -231,19 +248,21 @@ abstract contract BaseCrosschainDepositAdapter is
 
         if (depositQueue == address(0)) {
             // No queue configured: refund immediately.
-            IERC20(token).safeTransfer(user, amount);
+            _refundAssets(user, token, amount, nativeAmount);
             _updateDepositStatus(depositId, DepositStatus.DepositFailed);
             emit DepositFailed(depositId, user, reason);
             return;
         }
 
         // Try to enqueue for later resolution by operators.
-        try this._enqueueFailedDeposit(depositId, token, amount, reason, minSharesOut, zapCalls) {
+        try this._enqueueFailedDeposit{value: nativeAmount}(
+            depositId, token, amount, nativeAmount, reason, minSharesOut, zapCalls
+        ) {
             _updateDepositStatus(depositId, DepositStatus.Queued);
             emit DepositQueued(depositId, user, reason);
         } catch {
             // Queue failed - fallback to refund.
-            IERC20(token).safeTransfer(user, amount);
+            _refundAssets(user, token, amount, nativeAmount);
             _updateDepositStatus(depositId, DepositStatus.DepositFailed);
             emit DepositFailed(depositId, user, reason);
         }
@@ -253,24 +272,30 @@ abstract contract BaseCrosschainDepositAdapter is
         uint256 depositId,
         address token,
         uint256 amount,
+        uint256 nativeAmount,
         bytes memory reason,
         uint256 minSharesOut,
         Call[] calldata zapCalls
-    ) external onlySelf {
+    ) external payable onlySelf {
+        require(msg.value == nativeAmount, "Native amount mismatch");
+
         // Load record to pass full context to the queue.
         DepositRecord storage record = depositRecords[depositId];
 
-        // Approve queue to pull tokens for custody.
-        IERC20(token).forceApprove(depositQueue, amount);
+        // Approve queue to pull ERC20 tokens for custody.
+        if (token != address(0) && amount > 0) {
+            IERC20(token).forceApprove(depositQueue, amount);
+        }
 
         // Snapshot share price for later user-facing reconciliation.
         uint256 sharePrice = IElitraVault(record.vault).lastPricePerShare();
 
-        ICrosschainDepositQueue(depositQueue).recordFailedDeposit(
+        ICrosschainDepositQueue(depositQueue).recordFailedDeposit{value: nativeAmount}(
             record.user,
             record.srcEid,
             token,
             amount,
+            nativeAmount,
             record.vault,
             record.guid,
             reason,
@@ -278,6 +303,39 @@ abstract contract BaseCrosschainDepositAdapter is
             minSharesOut,
             zapCalls
         );
+    }
+
+    function _refundAssets(address user, address token, uint256 amount, uint256 nativeAmount) internal {
+        if (token != address(0) && amount > 0) {
+            IERC20(token).safeTransfer(user, amount);
+        }
+        if (nativeAmount > 0) {
+            (bool ok, ) = payable(user).call{value: nativeAmount}("");
+            if (!ok) {
+                pendingNativeRefunds[user] += nativeAmount;
+                emit NativeRefundQueued(user, nativeAmount);
+            }
+        }
+    }
+
+    /// @notice Claim native refunds that could not be pushed during failure handling
+    /// @param user User whose pending native refund will be claimed
+    /// @param recipient Recipient of claimed native refund
+    function claimNativeRefund(address user, address payable recipient) external nonReentrant {
+        require(msg.sender == user || msg.sender == owner(), "Not authorized");
+        require(recipient != address(0), "Invalid recipient");
+
+        uint256 refund = pendingNativeRefunds[user];
+        if (refund == 0) revert NativeTransferFailed();
+
+        pendingNativeRefunds[user] = 0;
+        (bool ok, ) = recipient.call{value: refund}("");
+        if (!ok) {
+            pendingNativeRefunds[user] = refund;
+            revert NativeTransferFailed();
+        }
+
+        emit NativeRefundClaimed(user, refund);
     }
 
     // ================== ADMIN ==================
