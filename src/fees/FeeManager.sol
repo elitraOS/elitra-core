@@ -440,7 +440,11 @@ abstract contract FeeManager is ERC4626Upgradeable, IFeeManager {
         // Aggregate fees in asset units.
         uint256 totalFeesAssets = managementFees + performanceFees;
         if (totalFeesAssets == 0) return (0, 0);
-        if (totalFeesAssets >= assetsUnderMgmt) revert FeeAssetsExceedAum();
+        // Never allow fee accrual to consume all AUM, otherwise core vault entry points can be blocked.
+        if (totalFeesAssets >= assetsUnderMgmt) {
+            if (assetsUnderMgmt <= 1) return (0, 0);
+            totalFeesAssets = assetsUnderMgmt - 1;
+        }
 
         // Solve for share mint amount x:
         // x / (totalSupply + x) = totalFeesAssets / assetsUnderMgmt

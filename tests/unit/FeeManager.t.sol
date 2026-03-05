@@ -281,7 +281,7 @@ contract FeeManagerTest is Test {
         assertEq(vault.balanceOf(feeReceiver), 0, "Fee receiver should have no shares");
     }
 
-    function test_ManagementFee_RevertsWhenAccruedFeesConsumeAllAum() public {
+    function test_ManagementFee_CapsWhenAccruedFeesWouldConsumeAllAum() public {
         uint256 depositAmount = 1000e6;
         asset.mint(alice, depositAmount);
         vm.startPrank(alice);
@@ -294,8 +294,11 @@ contract FeeManagerTest is Test {
         skip(DEFAULT_COOLDOWN);
         skip(11 * 365 days);
 
-        vm.expectRevert(FeeManager.FeeAssetsExceedAum.selector);
+        uint256 supplyBefore = vault.totalSupply();
         vault.takeFees();
+        uint256 supplyAfter = vault.totalSupply();
+
+        assertGt(supplyAfter, supplyBefore, "Fees should accrue via capped mint instead of revert");
     }
 
     // ========================================================================
